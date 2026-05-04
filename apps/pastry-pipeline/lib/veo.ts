@@ -47,6 +47,22 @@ let authClient: GoogleAuth | null = null;
 
 function getAuth(): GoogleAuth {
   if (!authClient) {
+    // Prefer the inline service-account JSON env var so we never fall through
+    // to the developer's local gcloud ADC (which can hit `invalid_rapt`
+    // reauth errors and break server-side Vertex calls).
+    const inline = process.env.GCP_SERVICE_ACCOUNT_JSON || "";
+    if (inline.trim().startsWith("{")) {
+      try {
+        const credentials = JSON.parse(inline);
+        authClient = new GoogleAuth({
+          credentials,
+          scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+        });
+        return authClient;
+      } catch {
+        // fall through to default discovery if JSON is malformed
+      }
+    }
     authClient = new GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/cloud-platform"],
     });
