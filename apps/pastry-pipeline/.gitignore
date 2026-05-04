@@ -5,3 +5,5 @@ node_modules
 *.log
 out
 .vercel
+# regenerable Veo response cache (295MB) — never deploy
+data/veo-cache/
