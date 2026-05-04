@@ -24,7 +24,8 @@ import { Progress } from "@/components/ui/progress";
 import { fmtNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { PostSimulatorDialog } from "@/components/simulators/PostSimulatorDialog";
-import type { CampaignDetail as CD, GeneratedVideo, ScheduledPost } from "@/lib/studio-types";
+import { InstagramFeedSim } from "@/components/simulators/InstagramFeedSim";
+import type { CampaignDetail as CD, GeneratedImage, GeneratedVideo, ScheduledPost } from "@/lib/studio-types";
 
 const PLATFORM_META = {
   instagram_reel: { icon: Instagram, label: "Instagram Reel", tone: "brand" as const },
@@ -138,7 +139,12 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           for now we show the grid + per-variant caption so output is at least
           visible and clickable. */}
       {data.images && data.images.length > 0 && (
-        <ImageVariantsSection images={data.images} brief={data.brief} />
+        <ImageVariantsSection
+          images={data.images}
+          brief={data.brief}
+          campaignId={campaignId}
+          onChange={(nextImages) => setData({ ...data, images: nextImages })}
+        />
       )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
@@ -586,16 +592,23 @@ function PublishQueue({ data, onPreview }: { data: CD; onPreview: (v: GeneratedV
 }
 
 // ────────────────────────── image-variants section ──────────────────────────
-// Minimal renderer for image / carousel campaigns. Groups generated stills
-// by variantIndex (so a 5-slide carousel shows as ONE post with 5 thumbnails),
-// and renders the IG caption below. Full swipe-to-approve + IG-feed simulator
-// integration comes in the next iteration.
+// Swipe-to-approve flow for image / carousel campaigns. Each variant renders
+// as an IG-feed simulator (real device-style frame, slide rail, caption,
+// like / comment / save UI), and reject / keep / star buttons under it
+// PATCH the verdict to the backend.
+//
+// One "variant" = one IG post (carousel posts = multiple slides, single-image
+// posts = one slide). Verdict mirrors across all slides in a carousel.
 function ImageVariantsSection({
   images,
   brief,
+  campaignId,
+  onChange,
 }: {
   images: any[];
   brief: any;
+  campaignId: string;
+  onChange: (next: any[]) => void;
 }) {
   // Group by variantIndex
   const variants = new Map<number, any[]>();
@@ -606,62 +619,210 @@ function ImageVariantsSection({
   }
   const sorted = Array.from(variants.entries())
     .sort((a, b) => a[0] - b[0])
-    .map(([_, slides]) => slides.sort((a, b) => a.slideIndex - b.slideIndex));
+    .map(([idx, slides]) => ({
+      variantIndex: idx,
+      slides: slides.sort((a, b) => a.slideIndex - b.slideIndex),
+      verdict: (slides[0]?.verdict ?? "pending") as "pending" | "approved" | "rejected" | "starred",
+    }));
 
+  // Active variant index for the swiper
+  const pending = sorted.filter((v) => v.verdict === "pending");
+  const [activeIdx, setActiveIdx] = useState(0);
+  const active = pending[Math.min(activeIdx, pending.length - 1)];
+
+  async function setVerdict(variantIndex: number, verdict: "approved" | "rejected" | "starred") {
+    // Optimistic local update
+    const next = images.map((img) =>
+      img.variantIndex === variantIndex
+        ? { ...img, verdict, reviewedAt: new Date().toISOString() }
+        : img,
+    );
+    onChange(next);
+    setActiveIdx((i) => i + 1);
+    fetch(`/api/studio/images/${campaignId}__${variantIndex}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict }),
+    }).catch(() => {});
+  }
+
+  const totalVariants = sorted.length;
+  const approvedCount = sorted.filter((v) => v.verdict === "approved" || v.verdict === "starred").length;
+  const rejectedCount = sorted.filter((v) => v.verdict === "rejected").length;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 flex-row items-center justify-between">
+        <CardTitle className="text-base">
+          {brief?.mediaType === "carousel" ? "Carousel posts" : "Image posts"}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {totalVariants} variant{totalVariants === 1 ? "" : "s"}
+            {brief?.mediaType === "carousel" && sorted[0] && ` · ${sorted[0].slides.length} slides each`}
+            {" · "}{approvedCount} approved · {rejectedCount} rejected · {pending.length} to review
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {pending.length === 0 ? (
+          <ImageGridReview sorted={sorted} brief={brief} campaignId={campaignId} onChange={(next) => onChange(next)} images={images} />
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
+            {/* IG simulator — the review canvas */}
+            <div className="mx-auto w-full max-w-[380px]">
+              {active && <IgPostFrame variant={active} brief={brief} />}
+            </div>
+            {/* Verdict + caption + slide grid + scene prompt */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-subtle">Variant {(active?.variantIndex ?? 0) + 1} of {totalVariants}</span>
+              </div>
+              <div className="rounded-lg border border-border bg-card/40 p-3 text-sm">
+                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Caption</div>
+                <p className="leading-relaxed text-foreground/90">{active?.slides[0]?.caption}</p>
+                {active?.slides[0]?.hashtags?.length > 0 && (
+                  <p className="mt-1.5 text-xs text-brand">
+                    {active.slides[0].hashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ")}
+                  </p>
+                )}
+              </div>
+              {brief?.mediaType === "carousel" && active && (
+                <div className="rounded-lg border border-border bg-card/40 p-3">
+                  <div className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">All slides</div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {active.slides.map((s, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={s.id} src={s.imageUrl} alt={`Slide ${i + 1}`} className="w-full aspect-square object-cover rounded" />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Verdict buttons */}
+              <div className="grid grid-cols-3 gap-2 pt-2">
+                <Button variant="outline" onClick={() => active && setVerdict(active.variantIndex, "rejected")} className="text-rose-300 hover:text-rose-200">
+                  ← Reject
+                </Button>
+                <Button variant="brand" onClick={() => active && setVerdict(active.variantIndex, "approved")}>
+                  → Keep
+                </Button>
+                <Button variant="outline" onClick={() => active && setVerdict(active.variantIndex, "starred")} className="text-amber-300 hover:text-amber-200">
+                  ↑ Star
+                </Button>
+              </div>
+              <p className="text-center text-[11px] text-muted-foreground pt-1">
+                ← reject · → keep · ↑ star · keyboard shortcuts work after click
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * IG post frame — uses InstagramFeedSim if installed, else a minimal phone-
+ * shaped frame. Either way: shows slides, caption, hashtags as they'd appear
+ * on the feed.
+ */
+function IgPostFrame({ variant, brief }: { variant: { variantIndex: number; slides: any[] }; brief: any }) {
+  const slides = variant.slides.map((s) => ({ kind: "image" as const, url: s.imageUrl, alt: s.caption?.slice(0, 60) }));
+  const post = {
+    slides,
+    caption: variant.slides[0]?.caption ?? "",
+    hashtags: variant.slides[0]?.hashtags ?? [],
+    account: brief?.clientId
+      ? { handle: brief.clientId, displayName: brief.clientId, verified: true }
+      : undefined,
+    stats: { likes: 18_204, comments: 412 },
+    postedAt: "2h",
+  };
+  return (
+    <div className="rounded-2xl border border-border bg-black overflow-hidden shadow-xl">
+      <InstagramFeedSim post={post} />
+    </div>
+  );
+}
+
+/** Compact grid review when nothing is pending — lets the user see what was approved/rejected and re-grade. */
+function ImageGridReview({
+  sorted,
+  brief,
+  campaignId,
+  onChange,
+  images,
+}: {
+  sorted: Array<{ variantIndex: number; slides: any[]; verdict: string }>;
+  brief: any;
+  campaignId: string;
+  onChange: (next: any[]) => void;
+  images: any[];
+}) {
   const aspectClass =
     brief?.aspect === "9:16" ? "aspect-[9/16]"
     : brief?.aspect === "1:1" ? "aspect-square"
     : brief?.aspect === "4:5" ? "aspect-[4/5]"
     : "aspect-video";
 
+  function reset(variantIndex: number) {
+    const next = images.map((img) =>
+      img.variantIndex === variantIndex ? { ...img, verdict: "pending" } : img,
+    );
+    onChange(next);
+    fetch(`/api/studio/images/${campaignId}__${variantIndex}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict: "pending" }),
+    }).catch(() => {});
+  }
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">
-          {brief?.mediaType === "carousel" ? "Carousel posts" : "Image posts"}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {sorted.length} variant{sorted.length === 1 ? "" : "s"}
-            {brief?.mediaType === "carousel" && ` · ${brief?.slideCount ?? sorted[0]?.length ?? 1} slides each`}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {sorted.map((slides, vIdx) => (
-            <div key={vIdx} className="rounded-xl border border-border bg-card/40 overflow-hidden">
-              {/* Slide carousel — horizontal scroll */}
-              <div className="flex overflow-x-auto snap-x snap-mandatory bg-black">
-                {slides.map((s) => (
-                  <div key={s.id} className={cn("relative shrink-0 w-full snap-center", aspectClass)}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={s.imageUrl}
-                      alt={`Variant ${s.variantIndex + 1} slide ${s.slideIndex + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    {slides.length > 1 && (
-                      <div className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
-                        {s.slideIndex + 1} / {slides.length}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {/* Caption + hashtags — IG-post style preview */}
-              <div className="p-3 text-sm">
-                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Variant {vIdx + 1}</div>
-                <p className="leading-relaxed text-foreground/90">{slides[0]?.caption}</p>
-                {slides[0]?.hashtags?.length > 0 && (
-                  <p className="mt-1.5 text-xs text-brand">
-                    {slides[0].hashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ")}
-                  </p>
-                )}
-              </div>
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {sorted.map((v) => {
+        const tone =
+          v.verdict === "approved" ? "border-emerald-500/40"
+          : v.verdict === "starred" ? "border-amber-400/50"
+          : v.verdict === "rejected" ? "border-rose-500/40 opacity-60"
+          : "border-border";
+        return (
+          <div key={v.variantIndex} className={cn("rounded-xl border bg-card/40 overflow-hidden", tone)}>
+            <div className="flex overflow-x-auto snap-x snap-mandatory bg-black">
+              {v.slides.map((s) => (
+                <div key={s.id} className={cn("relative shrink-0 w-full snap-center", aspectClass)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.imageUrl} alt="" className="w-full h-full object-cover" />
+                  {v.slides.length > 1 && (
+                    <div className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+                      {s.slideIndex + 1} / {v.slides.length}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <div className="p-3 text-sm">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Variant {v.variantIndex + 1}</span>
+                <span className={cn(
+                  "text-[10px] uppercase tracking-wider font-medium",
+                  v.verdict === "approved" ? "text-emerald-400"
+                  : v.verdict === "starred" ? "text-amber-300"
+                  : v.verdict === "rejected" ? "text-rose-400"
+                  : "text-muted-foreground",
+                )}>
+                  {v.verdict}
+                </span>
+              </div>
+              <p className="leading-relaxed text-foreground/80 line-clamp-3">{v.slides[0]?.caption}</p>
+              <button
+                onClick={() => reset(v.variantIndex)}
+                className="mt-2 text-[11px] text-muted-foreground hover:text-brand transition"
+              >
+                ↺ Reset to pending
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -129,6 +129,17 @@ export function saveBrandBrain(brain: BrandBrain): void {
 export function buildSystemPrefix(brain: BrandBrain): string {
   const v = brain.voice;
   const s = brain.story;
+  const vis = brain.visual;
+  // Include visual cues only when populated — keeps the prefix short for
+  // brains that don't have visual data yet.
+  const visualBlock = vis && (vis.photographyStyle || vis.colorPalette?.length)
+    ? `
+
+VISUAL FINGERPRINT (use when generating images / cover prompts):
+${vis.photographyStyle ? `Photography style: ${vis.photographyStyle}` : ""}
+${vis.colorPalette?.length ? `Color palette: ${vis.colorPalette.slice(0, 6).join(" · ")}` : ""}`
+    : "";
+
   return `═══════════ BRAND CONTEXT: ${brain.brandName} ═══════════
 
 You are writing on behalf of ${brain.brandName}. Match this brand's voice exactly.
@@ -150,7 +161,7 @@ ${v.bannedWords.slice(0, 12).map((w) => `"${w}"`).join(", ")}
 ORIGIN: ${s.origin}
 ${s.chefBio ? `CHEF: ${s.chefBio}` : ""}
 ${s.mission ? `MISSION: ${s.mission}` : ""}
-VALUES: ${s.valuesPillars.slice(0, 5).join(" · ")}
+VALUES: ${s.valuesPillars.slice(0, 5).join(" · ")}${visualBlock}
 
 ═══════════════════════════════════════════════════`;
 }

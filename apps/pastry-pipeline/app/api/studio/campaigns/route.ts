@@ -5,6 +5,7 @@ import { startVeoGeneration, veoIsConfigured, veoActiveProvider } from "@/lib/ve
 import { generateCreatorPovScript } from "@/lib/creator-pov";
 import { generateImage, nanoBananaIsConfigured } from "@/lib/nanobanana";
 import { anthropic, safeJson, SONNET } from "@/lib/anthropic";
+import { getBrandBrain } from "@/lib/brand-brain";
 import { defaultHashtagsFor } from "@/lib/hashtags";
 import { getBucket } from "@/lib/content-buckets";
 import { getPastry } from "@/lib/data";
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   // ── Image / carousel campaigns: skip Veo entirely, fan out Nano Banana ──
   if (safeMediaType === "image" || safeMediaType === "carousel") {
-    return launchImageCampaign(brief, pastry, safeMediaType, safeSlideCount, aspect);
+    return launchImageCampaign(brief, pastry, safeMediaType, safeSlideCount, aspect, clientId);
   }
 
   // ── Three paths based on bucket type ──
@@ -253,9 +254,12 @@ async function launchImageCampaign(
   mediaType: "image" | "carousel",
   slideCount: number,
   aspect: string,
+  clientId?: string,
 ): Promise<NextResponse> {
   // Generate per-variant prompt + caption + slide briefs via Claude.
-  const prompts = await generateImagePrompts(brief, pastry, mediaType, slideCount).catch(() => []);
+  // BrandBrain (when clientId is set) makes Claude write captions in the
+  // brand's actual voice — using their approved/banned vocab and tone.
+  const prompts = await generateImagePrompts(brief, pastry, mediaType, slideCount, clientId).catch(() => []);
   if (prompts.length === 0) {
     await createCampaign({ ...brief, status: "failed" }, []);
     return NextResponse.json(
@@ -340,18 +344,25 @@ async function generateImagePrompts(
   pastry: any,
   mediaType: "image" | "carousel",
   slideCount: number,
+  clientId?: string,
 ): Promise<VeoPrompt[]> {
   const want = mediaType === "carousel"
     ? `${brief.variantCount} carousel-post briefs, each with ${slideCount} slide prompts that flow together as one coherent IG carousel.`
     : `${brief.variantCount} single-image post briefs.`;
 
-  const system = `You write Instagram-post briefs for a bakery's content generator. Output ONLY valid JSON. Each brief contains:
-  - "prompt": a single-image scene description for the cover/hero image (1-2 sentences, photorealistic, food-focused, no people-of-color stereotyping, no text overlays)
-  - "caption": a tight IG caption (≤180 chars) in the brand's actual voice — punchy, sensory, no buzzwords ("amazing", "incredible", "literally", "obsessed")
+  const baseSystem = `You write Instagram-post briefs for a bakery's content generator. Output ONLY valid JSON. Each brief contains:
+  - "prompt": a single-image scene description for the cover/hero image (1-2 sentences, photorealistic, food-focused, no text overlays)
+  - "caption": a tight IG caption (≤180 chars) in the brand's actual voice — punchy, sensory, no generic buzzwords
   - "hashtags": 4-8 lowercase hashtags
   - "slidePrompts": ${mediaType === "carousel" ? `array of ${slideCount} prompts for each carousel slide — first is the hero shot, then progressively more detail/process/lifestyle. They should feel like a single editorial story.` : "array with exactly 1 prompt — same as 'prompt'"}
   Style: photorealistic editorial food photography, natural light, clean composition. No text or logos in image.
   Pastry: ${pastry.name}. Vibe: ${brief.vibe}. Goal: ${brief.goal}.`;
+
+  // BrandBrain — when clientId is set, prepend the brand's voice fingerprint
+  // so captions use approved vocab, avoid banned words, and match the
+  // restaurant's actual posting tone.
+  const brain = clientId ? getBrandBrain(clientId) : null;
+  const system = brain ? `${brain.systemPrefix}\n\n${baseSystem}` : baseSystem;
 
   const msg = await anthropic().messages.create({
     model: SONNET,
