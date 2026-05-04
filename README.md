@@ -4,10 +4,20 @@ Paired sales-demo monorepo for Lafayette Grand Café & Bakery (NoHo, NYC). Two N
 
 ## Apps
 
-| Folder | Port | What it is |
+| Folder | Port | Prospect-facing name | What it is |
+|---|---|---|---|
+| `apps/clv-dashboard` | 3001 | **Customer Intelligence Dashboard** | Pulls Google reviews, segments customers by lifetime value, drafts retention campaigns. |
+| `apps/pastry-pipeline` | 3002 | **Content Generation Engine** | Veo 3 video, ElevenLabs narration, Imagen 4 stills, plus the **BrandBrain** voice-fingerprint moat. |
+
+### Streamlit entry points
+
+Three deployable Streamlit pages live at the repo root — pick whichever matches the pitch:
+
+| File | Streamlit app | What it shows |
 |---|---|---|
-| `apps/clv-dashboard` | 3001 | Customer Lifetime Value intelligence — pulls Google reviews, segments customers, drafts retention campaigns. |
-| `apps/pastry-pipeline` | 3002 | Campaign Studio — Veo 3 video generation, ElevenLabs narration, Imagen 4 stills, plus the **BrandBrain** voice-fingerprint moat. |
+| `clv_app.py` | Standalone | Just the Customer Intelligence Dashboard, embedded full-pane. |
+| `studio_app.py` | Standalone | Just the Content Generation Engine, embedded full-pane. |
+| `streamlit_app.py` | Hub | Both demos behind a sidebar picker (optional). |
 
 ## Local development
 

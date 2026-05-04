@@ -59,10 +59,10 @@ DEMOS = {
     "🏠 Overview": {
         "kind": "overview",
     },
-    "📊 CLV Intelligence Dashboard": {
+    "📊 Customer Intelligence Dashboard": {
         "kind": "iframe",
         "url_key": "CLV_URL",
-        "tagline": "Pulls Google reviews → segments customers → drafts retention campaigns.",
+        "tagline": "Pulls Google reviews → segments customers by lifetime value → drafts retention campaigns.",
         "what_it_shows": [
             "Review-driven customer segments (loyalists, lapsing, first-timers)",
             "Per-segment lifetime-value projection",
@@ -76,7 +76,7 @@ DEMOS = {
         ],
         "default_height": 1100,
     },
-    "🎬 Campaign Studio (Pastry Pipeline)": {
+    "🎬 Content Generation Engine": {
         "kind": "iframe",
         "url_key": "STUDIO_URL",
         "tagline": "Veo 3 video + ElevenLabs narration + the BrandBrain voice-fingerprint moat.",
@@ -168,7 +168,7 @@ if selected["kind"] == "overview":
 
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        st.markdown("### 📊 CLV Intelligence Dashboard")
+        st.markdown("### 📊 Customer Intelligence Dashboard")
         st.write(
             "Turns Lafayette's 1,400+ Google reviews into customer segments, lifetime-value "
             "projections, and drafted retention campaigns."
@@ -180,7 +180,7 @@ if selected["kind"] == "overview":
             "- Output is a campaign you'd actually send, not a chart you'd ignore."
         )
     with col2:
-        st.markdown("### 🎬 Campaign Studio")
+        st.markdown("### 🎬 Content Generation Engine")
         st.write(
             "Generates 50 short-form video variants per campaign with Veo 3, narrated by "
             "ElevenLabs, filtered through a per-client voice fingerprint (BrandBrain)."

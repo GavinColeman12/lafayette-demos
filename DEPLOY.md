@@ -56,23 +56,37 @@ Railway pings these post-deploy to decide if the service is healthy. If you chan
 
 ---
 
-## Streamlit hub (the front door)
+## Streamlit (the front doors)
 
-The Streamlit page at `streamlit_app.py` is the single URL you share with prospects. It iframes both Railway apps so the prospect never has to juggle two links.
+There are **three** deployable Streamlit pages in this repo. Deploy one, two, or all three from the same GitHub repo on Streamlit Cloud — each one becomes its own app with its own URL.
 
-### Deploy steps
+| Streamlit main file | Prospect-facing demo | Suggested URL |
+|---|---|---|
+| `clv_app.py` | Customer Intelligence Dashboard (standalone) | `lafayette-customer.streamlit.app` |
+| `studio_app.py` | Content Generation Engine (standalone) | `lafayette-content.streamlit.app` |
+| `streamlit_app.py` | Both demos behind a hub (optional) | `lafayette-demos.streamlit.app` |
 
-1. Make sure both Railway services from above are live and you have their public URLs.
+### Deploy steps (repeat per app you want)
+
+1. Make sure the Railway service backing the demo is live and you have its public URL.
 2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**.
-3. Connect to your GitHub repo (`lafayette-demos`).
-4. **Main file path**: `streamlit_app.py`
+3. Connect to your GitHub repo (`GavinColeman12/lafayette-demos`).
+4. **Main file path**: `clv_app.py` *(or `studio_app.py`, or `streamlit_app.py`)*
 5. **Python version**: 3.11
-6. Click **Advanced settings → Secrets** and paste:
+6. **App URL**: pick the suggested URL from the table above.
+7. Click **Advanced settings → Secrets** and paste only what that page needs:
    ```toml
+   # clv_app.py needs:
    CLV_URL = "https://your-clv-service.up.railway.app"
+
+   # studio_app.py needs:
    STUDIO_URL = "https://your-pastry-service.up.railway.app/dashboard/studio"
+
+   # streamlit_app.py (hub) needs both.
    ```
-7. **Deploy**. You'll get a `*.streamlit.app` URL — that's the link to share.
+8. **Deploy**. First boot takes ~2 min while Streamlit installs the requirements.
+
+You can repeat steps 2-8 for each entry point and end up with one shareable URL per pitch type.
 
 ### Iframe gotcha
 
