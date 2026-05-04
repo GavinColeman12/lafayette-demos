@@ -59,14 +59,17 @@ export function CampaignLauncher({
   clientId?: string;
 }) {
   const router = useRouter();
-  const defaultPastry = flavor?.pastrySlug ?? pastries.find((p) => p.isHero)?.slug ?? pastries[0]?.slug ?? "";
+  // Don't auto-bias the form toward the monthly-flavor narrative; most posts
+  // are everyday content (pictures of regulars, behind-the-scenes, ambiance).
+  // The "Launch May Drop" shortcut button stays available for that one use case.
+  const defaultPastry = pastries.find((p) => p.isHero)?.slug ?? pastries[0]?.slug ?? "";
   const [pastrySlug, setPastrySlug] = useState(defaultPastry);
-  const [vibe, setVibe] = useState(flavor ? "playful" : "luxe");
-  const [hookType, setHookType] = useState(flavor ? "menu_drop" : "menu_drop");
-  const [audience, setAudience] = useState("instagrammers");
-  const [variantCount, setVariantCount] = useState(flavor ? 4 : 4);
-  const [aspect, setAspect] = useState<"9:16" | "1:1" | "16:9">("9:16");
-  const [goal, setGoal] = useState(flavor ? `Maximize discovery for May's flavor — ${flavor.pastryName}` : "Drive morning bakery walk-in traffic");
+  const [vibe, setVibe] = useState("luxe");
+  const [hookType, setHookType] = useState("menu_drop");
+  const [audience, setAudience] = useState("regulars");
+  const [variantCount, setVariantCount] = useState(4);
+  const [aspect, setAspect] = useState<"9:16" | "1:1" | "16:9">("1:1");
+  const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
