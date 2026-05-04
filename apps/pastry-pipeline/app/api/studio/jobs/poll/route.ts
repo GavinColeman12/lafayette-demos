@@ -146,7 +146,10 @@ export async function POST(req: NextRequest) {
       const all = after.stats.totalJobs;
       const done = after.stats.completedJobs + after.stats.failedJobs;
       if (all > 0 && done === all) {
-        await updateCampaign(campaignId, { status: "ready_for_review" });
+        // Only mark "ready" if at least one video actually rendered.
+        // If every job failed, the campaign is failed, not ready.
+        const next = after.stats.completedJobs > 0 ? "ready_for_review" : "failed";
+        await updateCampaign(campaignId, { status: next });
       }
     }
   }
