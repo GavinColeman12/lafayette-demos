@@ -133,6 +133,14 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
+      {/* Image / carousel campaigns render here. The full IG-carousel preview
+          (PostSimulatorDialog) wiring for image variants ships next iteration;
+          for now we show the grid + per-variant caption so output is at least
+          visible and clickable. */}
+      {data.images && data.images.length > 0 && (
+        <ImageVariantsSection images={data.images} brief={data.brief} />
+      )}
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
         <TabsList>
           <TabsTrigger value="swipe"><Film className="mr-1 h-3 w-3" />Swipe</TabsTrigger>
@@ -574,6 +582,86 @@ function PublishQueue({ data, onPreview }: { data: CD; onPreview: (v: GeneratedV
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ────────────────────────── image-variants section ──────────────────────────
+// Minimal renderer for image / carousel campaigns. Groups generated stills
+// by variantIndex (so a 5-slide carousel shows as ONE post with 5 thumbnails),
+// and renders the IG caption below. Full swipe-to-approve + IG-feed simulator
+// integration comes in the next iteration.
+function ImageVariantsSection({
+  images,
+  brief,
+}: {
+  images: any[];
+  brief: any;
+}) {
+  // Group by variantIndex
+  const variants = new Map<number, any[]>();
+  for (const img of images) {
+    const arr = variants.get(img.variantIndex) ?? [];
+    arr.push(img);
+    variants.set(img.variantIndex, arr);
+  }
+  const sorted = Array.from(variants.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([_, slides]) => slides.sort((a, b) => a.slideIndex - b.slideIndex));
+
+  const aspectClass =
+    brief?.aspect === "9:16" ? "aspect-[9/16]"
+    : brief?.aspect === "1:1" ? "aspect-square"
+    : brief?.aspect === "4:5" ? "aspect-[4/5]"
+    : "aspect-video";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">
+          {brief?.mediaType === "carousel" ? "Carousel posts" : "Image posts"}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {sorted.length} variant{sorted.length === 1 ? "" : "s"}
+            {brief?.mediaType === "carousel" && ` · ${brief?.slideCount ?? sorted[0]?.length ?? 1} slides each`}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {sorted.map((slides, vIdx) => (
+            <div key={vIdx} className="rounded-xl border border-border bg-card/40 overflow-hidden">
+              {/* Slide carousel — horizontal scroll */}
+              <div className="flex overflow-x-auto snap-x snap-mandatory bg-black">
+                {slides.map((s) => (
+                  <div key={s.id} className={cn("relative shrink-0 w-full snap-center", aspectClass)}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={s.imageUrl}
+                      alt={`Variant ${s.variantIndex + 1} slide ${s.slideIndex + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    {slides.length > 1 && (
+                      <div className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+                        {s.slideIndex + 1} / {slides.length}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* Caption + hashtags — IG-post style preview */}
+              <div className="p-3 text-sm">
+                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Variant {vIdx + 1}</div>
+                <p className="leading-relaxed text-foreground/90">{slides[0]?.caption}</p>
+                {slides[0]?.hashtags?.length > 0 && (
+                  <p className="mt-1.5 text-xs text-brand">
+                    {slides[0].hashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

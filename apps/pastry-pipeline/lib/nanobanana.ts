@@ -23,6 +23,22 @@ const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 let _auth: GoogleAuth | null = null;
 function getAuth(): GoogleAuth {
   if (!_auth) {
+    // Same pattern as lib/veo.ts — prefer inline service-account JSON over
+    // local gcloud ADC so we never hit `invalid_rapt` reauth errors when
+    // calling Vertex from a server context.
+    const inline = process.env.GCP_SERVICE_ACCOUNT_JSON || "";
+    if (inline.trim().startsWith("{")) {
+      try {
+        const credentials = JSON.parse(inline);
+        _auth = new GoogleAuth({
+          credentials,
+          scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+        });
+        return _auth;
+      } catch {
+        // fall through to default discovery
+      }
+    }
     _auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
   }
   return _auth;

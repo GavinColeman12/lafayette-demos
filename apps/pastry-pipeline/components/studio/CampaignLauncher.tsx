@@ -76,6 +76,41 @@ export function CampaignLauncher({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Media type — Video (Veo), Image (single Nano Banana), Carousel (Nano Banana × N slides).
+  const [mediaType, setMediaType] = useState<"video" | "image" | "carousel">("video");
+  const [slideCount, setSlideCount] = useState<number>(5);
+
+  // Scene direction — long-form creative seed that gets expanded into a
+  // detailed Veo / Nano Banana brief. Veo specifically renders better with
+  // longer, more specific prompts (camera moves, lighting, surface detail,
+  // sound design), so this gives the user a way to direct the artistic vision
+  // beyond just picking a vibe + bucket.
+  const [scene, setScene] = useState("");
+  const [sceneExpanding, setSceneExpanding] = useState(false);
+  const [priorScenes, setPriorScenes] = useState<string[]>([]);
+  async function expandScene() {
+    if (sceneExpanding) return;
+    setSceneExpanding(true);
+    try {
+      const res = await fetch("/api/studio/expand-scene", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          seed: scene,
+          pastrySlug, vibe, hookType, audience, bucketId, mediaType,
+          previous: priorScenes.slice(-3),
+        }),
+      });
+      const j = await res.json();
+      if (j.scene) {
+        if (scene.trim()) setPriorScenes((p) => [...p.slice(-9), scene]);
+        setScene(j.scene);
+      }
+    } catch {} finally {
+      setSceneExpanding(false);
+    }
+  }
+
   // Goal-regenerator state — keeps a small history so successive clicks
   // produce non-repeating suggestions.
   const [goalSuggesting, setGoalSuggesting] = useState(false);
@@ -152,7 +187,9 @@ export function CampaignLauncher({
   }
 
   async function launch() {
-    if (!confirmRealVeoSpend(variantCount)) return;
+    // Image / carousel campaigns skip the Veo cost confirm — they hit Nano
+    // Banana which is ~$0.04 per image (cheap), not Veo at $0.50/clip.
+    if (mediaType === "video" && !confirmRealVeoSpend(variantCount)) return;
     setBusy(true);
     setError(null);
     try {
@@ -171,6 +208,9 @@ export function CampaignLauncher({
           styleId: styleId || undefined,
           bucketId: bucketId || undefined,
           clientId: clientId || undefined,
+          mediaType,
+          slideCount: mediaType === "carousel" ? slideCount : 1,
+          scene: scene || undefined,
         }),
       });
       if (!res.ok) {
@@ -275,6 +315,82 @@ export function CampaignLauncher({
           </div>
         </div>
       )}
+
+      {/* Media-type toggle — what KIND of post is this? */}
+      <Field label="Media">
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            { id: "video",    label: "🎬 Video",    desc: "Veo 3 · 8s clip per variant" },
+            { id: "image",    label: "📸 Image",    desc: "Nano Banana · single still per variant" },
+            { id: "carousel", label: "🖼️ Carousel", desc: "Nano Banana · multi-slide IG carousel post" },
+          ] as const).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMediaType(m.id)}
+              className={cn(
+                "rounded-lg border px-3 py-2 text-left text-xs transition",
+                mediaType === m.id
+                  ? "border-brand bg-brand/10 text-foreground"
+                  : "border-border bg-muted text-muted-foreground hover:text-foreground hover:border-foreground/30",
+              )}
+            >
+              <div className="font-semibold">{m.label}</div>
+              <div className="opacity-70">{m.desc}</div>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {mediaType === "carousel" && (
+        <Field label={`Slides per carousel · ${slideCount}`}>
+          <input
+            type="range"
+            min={2}
+            max={10}
+            value={slideCount}
+            onChange={(e) => setSlideCount(Number(e.target.value))}
+            className="w-full"
+          />
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Each carousel post will contain {slideCount} sequential slides — first is the hero, then progressively more detail / process / lifestyle.
+          </div>
+        </Field>
+      )}
+
+      {/* Scene direction — Veo benefits from long, detailed prompts. Type a
+          short seed → "Expand for Veo" rewrites it into a paragraph-length
+          cinematic brief that gets passed through to the prompt generator. */}
+      <Field label={mediaType === "video" ? "Scene direction (optional · longer is better for Veo)" : "Scene direction (optional)"}>
+        <div className="flex items-start gap-2">
+          <textarea
+            value={scene}
+            placeholder={
+              sceneExpanding
+                ? "Expanding…"
+                : mediaType === "video"
+                ? "e.g. \"slow dolly across butter-laminated layers at golden hour\". Click Expand and Claude will turn it into a full cinematic brief (lighting, motion, surface detail, mood, sound)."
+                : "e.g. \"flatlay with linen and one fork\". Click Expand and Claude will enrich it with composition, color, props, mood."
+            }
+            onChange={(e) => setScene(e.target.value)}
+            rows={4}
+            className="flex-1 rounded-lg border border-border bg-muted p-3 text-sm leading-relaxed resize-y"
+          />
+          <button
+            type="button"
+            onClick={expandScene}
+            disabled={sceneExpanding}
+            title={scene ? "Expand into a richer cinematic brief" : "Generate a scene direction from your selections"}
+            className="h-9 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:text-brand hover:border-brand transition disabled:opacity-50"
+          >
+            {sceneExpanding ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />…</>
+            ) : (
+              <><Wand2 className="h-3.5 w-3.5" />{scene ? "Expand" : "Generate"}</>
+            )}
+          </button>
+        </div>
+      </Field>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Field label="Pastry">

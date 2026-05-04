@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addJobs, createCampaign, listCampaigns, updateCampaign } from "@/lib/studio-store";
+import { addImages, addJobs, createCampaign, listCampaigns, updateCampaign } from "@/lib/studio-store";
 import { generatePromptsForCampaign } from "@/lib/prompt-engine";
 import { startVeoGeneration, veoIsConfigured, veoActiveProvider } from "@/lib/veo";
 import { generateCreatorPovScript } from "@/lib/creator-pov";
+import { generateImage, nanoBananaIsConfigured } from "@/lib/nanobanana";
+import { anthropic, safeJson, SONNET } from "@/lib/anthropic";
 import { defaultHashtagsFor } from "@/lib/hashtags";
 import { getBucket } from "@/lib/content-buckets";
 import { getPastry } from "@/lib/data";
-import type { CampaignBrief, VeoPrompt, VideoJob } from "@/lib/studio-types";
+import type { CampaignBrief, GeneratedImage, VeoPrompt, VideoJob } from "@/lib/studio-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +40,30 @@ export async function POST(req: NextRequest) {
     styleId,
     bucketId,
     clientId,
+    mediaType = "video",
+    slideCount = 1,
+    scene = "",
   } = body ?? {};
+
+  // Scene direction: a long-form creative seed from the user (camera moves,
+  // lighting, mood, etc.). Threaded through to the prompt engine by appending
+  // to the strategic goal. Prompt generators read brief.goal as the brief
+  // shape, so enriching it here means downstream Veo / Nano Banana prompts
+  // get the artistic vision baked in without touching prompt-engine.ts.
+  const enrichedGoal = scene && typeof scene === "string" && scene.trim()
+    ? `${goal}\n\nScene direction: ${scene.trim()}`
+    : goal;
 
   const pastry = pastrySlug ? getPastry(pastrySlug) : undefined;
   if (!pastry) return NextResponse.json({ error: "unknown pastry" }, { status: 404 });
 
   const safeCount = Math.max(1, Math.min(50, Number(variantCount) || 12));
+  const safeMediaType: "video" | "image" | "carousel" =
+    mediaType === "image" || mediaType === "carousel" ? mediaType : "video";
+  const safeSlideCount =
+    safeMediaType === "carousel" ? Math.max(2, Math.min(10, Number(slideCount) || 5))
+    : safeMediaType === "image" ? 1
+    : 1;
   const id = `cmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const brief: CampaignBrief = {
     id,
@@ -52,7 +72,7 @@ export async function POST(req: NextRequest) {
     hookType,
     vibe,
     audience,
-    goal,
+    goal: enrichedGoal,
     variantCount: safeCount,
     durationSec,
     aspect,
@@ -63,7 +83,14 @@ export async function POST(req: NextRequest) {
     styleId,
     bucketId,
     clientId,
+    mediaType: safeMediaType,
+    slideCount: safeSlideCount,
   };
+
+  // ── Image / carousel campaigns: skip Veo entirely, fan out Nano Banana ──
+  if (safeMediaType === "image" || safeMediaType === "carousel") {
+    return launchImageCampaign(brief, pastry, safeMediaType, safeSlideCount, aspect);
+  }
 
   // ── Three paths based on bucket type ──
   //   1. Narrated bucket (creator_pov, ranking, secret_menu, recipe_reveal,
@@ -209,4 +236,161 @@ async function generateCreatorPovPrompts(
     });
   });
   return prompts;
+}
+
+/**
+ * Image / carousel campaigns. We skip the async Veo job pipeline entirely
+ * because Nano Banana returns synchronously — for a 5-slide carousel × 4
+ * variants we just await 20 generateImage calls in parallel and persist.
+ *
+ *   Single-image post: variantCount = N, slideCount = 1   → N images total
+ *   Carousel post:     variantCount = N, slideCount = M   → N×M images total
+ *                       grouped by variantIndex so verdicts apply per variant.
+ */
+async function launchImageCampaign(
+  brief: CampaignBrief,
+  pastry: any,
+  mediaType: "image" | "carousel",
+  slideCount: number,
+  aspect: string,
+): Promise<NextResponse> {
+  // Generate per-variant prompt + caption + slide briefs via Claude.
+  const prompts = await generateImagePrompts(brief, pastry, mediaType, slideCount).catch(() => []);
+  if (prompts.length === 0) {
+    await createCampaign({ ...brief, status: "failed" }, []);
+    return NextResponse.json(
+      { error: "image-prompt generation failed", id: brief.id },
+      { status: 500 },
+    );
+  }
+  await createCampaign(brief, prompts);
+
+  // Map aspect → Nano Banana enum (Veo's "9:16"/"16:9" → image-friendly set).
+  const imgAspect: GeneratedImage["aspect"] =
+    aspect === "9:16" ? "9:16"
+    : aspect === "16:9" ? "4:3"
+    : aspect === "4:5" ? "4:5"
+    : "1:1";
+
+  // Fan out generation. Each prompt has `prompt` (the per-variant base) plus
+  // `creatorPov.shots[].prompt` reused as per-slide prompts for carousels.
+  const tasks: Array<Promise<GeneratedImage | null>> = [];
+  prompts.forEach((p, variantIndex) => {
+    const slidePrompts = (p.creatorPov?.shots ?? []).map((s) => s.prompt);
+    const prompts4Slides =
+      slidePrompts.length >= slideCount ? slidePrompts.slice(0, slideCount)
+      : Array.from({ length: slideCount }, (_, i) => slidePrompts[i] ?? p.prompt);
+
+    prompts4Slides.forEach((slidePrompt, slideIndex) => {
+      tasks.push((async () => {
+        try {
+          const out = await generateImage({ prompt: slidePrompt, aspect: imgAspect });
+          return {
+            id: `img_${brief.id}_${String(variantIndex + 1).padStart(2, "0")}_s${slideIndex + 1}`,
+            campaignId: brief.id,
+            promptId: p.id,
+            variantIndex,
+            slideIndex,
+            prompt: slidePrompt,
+            caption: p.caption,
+            hashtags: p.hashtags ?? [],
+            imageUrl: out.imageUrl,
+            aspect: imgAspect,
+            generatedAt: new Date().toISOString(),
+            verdict: "pending",
+            qualityScore: 75,
+          } satisfies GeneratedImage;
+        } catch (err) {
+          console.error("[nanobanana] generation failed:", (err as Error).message);
+          return null;
+        }
+      })());
+    });
+  });
+  const results = (await Promise.all(tasks)).filter((x): x is GeneratedImage => x !== null);
+  await addImages(results);
+
+  const successfulVariants = new Set(results.map((r) => r.variantIndex)).size;
+  const finalStatus = successfulVariants > 0 ? "ready_for_review" : "failed";
+  await updateCampaign(brief.id, { status: finalStatus });
+
+  return NextResponse.json({
+    id: brief.id,
+    mediaType,
+    slideCount,
+    variantsRequested: prompts.length,
+    variantsGenerated: successfulVariants,
+    imagesGenerated: results.length,
+    nanoBananaConfigured: nanoBananaIsConfigured(),
+    status: finalStatus,
+  });
+}
+
+/**
+ * Ask Claude for variantCount image briefs. Each brief contains:
+ *   - One IG caption (shared across all slides if carousel)
+ *   - Either ONE prompt (single-image) or `slideCount` prompts (carousel)
+ *
+ * We pack the per-slide prompts into the `creatorPov.shots[]` array so we
+ * don't need to invent a new field — image generation reads `shots[].prompt`
+ * the same way the carousel renderer expects later.
+ */
+async function generateImagePrompts(
+  brief: CampaignBrief,
+  pastry: any,
+  mediaType: "image" | "carousel",
+  slideCount: number,
+): Promise<VeoPrompt[]> {
+  const want = mediaType === "carousel"
+    ? `${brief.variantCount} carousel-post briefs, each with ${slideCount} slide prompts that flow together as one coherent IG carousel.`
+    : `${brief.variantCount} single-image post briefs.`;
+
+  const system = `You write Instagram-post briefs for a bakery's content generator. Output ONLY valid JSON. Each brief contains:
+  - "prompt": a single-image scene description for the cover/hero image (1-2 sentences, photorealistic, food-focused, no people-of-color stereotyping, no text overlays)
+  - "caption": a tight IG caption (≤180 chars) in the brand's actual voice — punchy, sensory, no buzzwords ("amazing", "incredible", "literally", "obsessed")
+  - "hashtags": 4-8 lowercase hashtags
+  - "slidePrompts": ${mediaType === "carousel" ? `array of ${slideCount} prompts for each carousel slide — first is the hero shot, then progressively more detail/process/lifestyle. They should feel like a single editorial story.` : "array with exactly 1 prompt — same as 'prompt'"}
+  Style: photorealistic editorial food photography, natural light, clean composition. No text or logos in image.
+  Pastry: ${pastry.name}. Vibe: ${brief.vibe}. Goal: ${brief.goal}.`;
+
+  const msg = await anthropic().messages.create({
+    model: SONNET,
+    max_tokens: 3500,
+    temperature: 0.85,
+    system,
+    messages: [{ role: "user", content: `Return ONLY a JSON array of ${want}\n\nFormat: [{"prompt":"…","caption":"…","hashtags":["…"],"slidePrompts":["…"]}]` }],
+  });
+  const text = msg.content
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text).join("");
+  const arr: any[] = safeJson(text, []);
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+
+  return arr.slice(0, brief.variantCount).map((b, i) => {
+    const slidePrompts: string[] = Array.isArray(b.slidePrompts) && b.slidePrompts.length
+      ? b.slidePrompts.slice(0, slideCount)
+      : [b.prompt];
+    return {
+      id: `prm_${brief.id}_${String(i + 1).padStart(2, "0")}`,
+      campaignId: brief.id,
+      index: i,
+      prompt: b.prompt ?? slidePrompts[0] ?? "",
+      caption: b.caption ?? "",
+      styleTag: mediaType === "carousel" ? `Carousel · ${slidePrompts.length} slides` : "Single image",
+      hashtags: Array.isArray(b.hashtags) ? b.hashtags.slice(0, 8) : defaultHashtagsFor(pastry).slice(0, 6),
+      // Reuse creatorPov.shots[] to carry per-slide prompts.
+      creatorPov: {
+        narration: "",
+        hookLine: "",
+        totalSeconds: 0,
+        shots: slidePrompts.map((sp, idx) => ({
+          index: idx,
+          narrationPhrase: "",
+          startSec: 0,
+          endSec: 0,
+          prompt: sp,
+        })),
+      },
+    } satisfies VeoPrompt;
+  });
 }

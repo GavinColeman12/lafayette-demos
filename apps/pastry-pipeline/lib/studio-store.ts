@@ -8,6 +8,7 @@ import path from "node:path";
 import type {
   CampaignBrief,
   CampaignDetail,
+  GeneratedImage,
   GeneratedVideo,
   ScheduledPost,
   VeoPrompt,
@@ -22,11 +23,12 @@ type Db = {
   prompts: VeoPrompt[];
   jobs: VideoJob[];
   videos: GeneratedVideo[];
+  images: GeneratedImage[];
   posts: ScheduledPost[];
 };
 
 function emptyDb(): Db {
-  return { campaigns: [], prompts: [], jobs: [], videos: [], posts: [] };
+  return { campaigns: [], prompts: [], jobs: [], videos: [], images: [], posts: [] };
 }
 
 function readDb(): Db {
@@ -43,6 +45,7 @@ function readDb(): Db {
       prompts: parsed.prompts ?? [],
       jobs: parsed.jobs ?? [],
       videos: parsed.videos ?? [],
+      images: parsed.images ?? [],
       posts: parsed.posts ?? [],
     };
   } catch {
@@ -82,12 +85,30 @@ export async function getCampaignDetail(id: string): Promise<CampaignDetail | nu
     const prompts = db.prompts.filter((p) => p.campaignId === id).sort((a, b) => a.index - b.index);
     const jobs = db.jobs.filter((j) => j.campaignId === id);
     const videos = db.videos.filter((v) => v.campaignId === id);
+    const images = db.images.filter((i) => i.campaignId === id);
     const posts = db.posts.filter((p) => p.campaignId === id);
+
+    // Carousel-aware: a "variant" is one prompt/post; carousels have multiple
+    // images per variant. Group by variantIndex so verdicts and counts treat
+    // a 5-slide carousel as one unit, not 5.
+    const variantBuckets = new Map<number, GeneratedImage[]>();
+    for (const img of images) {
+      const arr = variantBuckets.get(img.variantIndex) ?? [];
+      arr.push(img);
+      variantBuckets.set(img.variantIndex, arr);
+    }
+    const variants = Array.from(variantBuckets.values());
+    const variantVerdict = (vs: GeneratedImage[]): GeneratedImage["verdict"] => {
+      // Variant verdict is the verdict of its first slide (verdicts are mirrored).
+      return (vs[0]?.verdict ?? "pending") as GeneratedImage["verdict"];
+    };
+
     return {
       brief,
       prompts,
       jobs,
       videos,
+      images,
       scheduledPosts: posts,
       stats: {
         totalPrompts: prompts.length,
@@ -100,6 +121,10 @@ export async function getCampaignDetail(id: string): Promise<CampaignDetail | nu
         videosApproved: videos.filter((v) => v.verdict === "approved").length,
         videosRejected: videos.filter((v) => v.verdict === "rejected").length,
         videosStarred: videos.filter((v) => v.verdict === "starred").length,
+        imageVariantsReady: variants.length,
+        imageVariantsApproved: variants.filter((vs) => variantVerdict(vs) === "approved").length,
+        imageVariantsRejected: variants.filter((vs) => variantVerdict(vs) === "rejected").length,
+        imageVariantsStarred: variants.filter((vs) => variantVerdict(vs) === "starred").length,
         postsScheduled: posts.filter((p) => p.status === "scheduled").length,
         postsPublished: posts.filter((p) => p.status === "posted").length,
       },
@@ -136,6 +161,29 @@ export async function updateJob(id: string, patch: Partial<VideoJob>): Promise<V
     if (idx < 0) return null;
     db.jobs[idx] = { ...db.jobs[idx], ...patch };
     return db.jobs[idx];
+  });
+}
+
+export async function addImages(newImages: GeneratedImage[]): Promise<void> {
+  await withDb((db) => {
+    db.images.push(...newImages);
+  });
+}
+
+export async function setImageVerdict(
+  variantId: { campaignId: string; variantIndex: number },
+  verdict: GeneratedImage["verdict"],
+): Promise<number> {
+  return withDb((db) => {
+    let n = 0;
+    db.images = db.images.map((img) => {
+      if (img.campaignId === variantId.campaignId && img.variantIndex === variantId.variantIndex) {
+        n++;
+        return { ...img, verdict, reviewedAt: new Date().toISOString() };
+      }
+      return img;
+    });
+    return n;
   });
 }
 
