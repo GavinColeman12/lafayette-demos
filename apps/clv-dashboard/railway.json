@@ -6,8 +6,6 @@
   },
   "deploy": {
     "startCommand": "npx next start -H 0.0.0.0 -p ${PORT:-3001}",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
