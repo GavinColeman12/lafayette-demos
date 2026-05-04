@@ -68,7 +68,10 @@ export function CampaignLauncher({
   const [hookType, setHookType] = useState("menu_drop");
   const [audience, setAudience] = useState("regulars");
   const [variantCount, setVariantCount] = useState(4);
-  const [aspect, setAspect] = useState<"9:16" | "1:1" | "16:9">("1:1");
+  // Veo 3 only supports 16:9 and 9:16. 1:1 will return when image-mode
+  // (Nano Banana stills) ships — Imagen / Nano Banana DOES support square
+  // and that's where IG-carousel 1:1 belongs.
+  const [aspect, setAspect] = useState<"9:16" | "16:9">("9:16");
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,7 +366,7 @@ export function CampaignLauncher({
         </Field>
         <Field label="Aspect">
           <div className="flex gap-1">
-            {(["9:16", "1:1", "16:9"] as const).map((a) => (
+            {(["9:16", "16:9"] as const).map((a) => (
               <button
                 key={a}
                 onClick={() => setAspect(a)}
