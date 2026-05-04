@@ -1,0 +1,250 @@
+<!--
+  Lafayette demos — drop-in website embed
+  Two live product demos rendered as cards with:
+    • Lazy-loaded iframes (don't fetch until in view — saves Railway warm-up cost)
+    • Loading skeleton while iframe wakes
+    • Fullscreen toggle
+    • Copy-link button (with toast)
+    • Mobile fallback: a clean preview card with "Open demo ↗" CTA
+      (iframes don't work on phones for dashboard UIs — opening in a
+      native browser tab gives a much better experience)
+    • Brand tokens scoped under .lafdemo-* so this won't fight your site CSS
+-->
+
+<style>
+  .lafdemo-grid { --gold:#a07a2a; --cream:#fbf8f1; --cream-2:#f3ead4; --line:#ece4cd; --ink:#2a2218; --muted:#6b6b6b;
+    display:grid; gap:28px; grid-template-columns:1fr; max-width:1200px; margin:0 auto; padding:24px;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink);
+  }
+  @media (min-width:1100px) { .lafdemo-grid { grid-template-columns:1fr 1fr; } }
+
+  .lafdemo-card { background:var(--cream); border:1px solid var(--line); border-radius:18px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(42,34,24,.05); display:flex; flex-direction:column;
+  }
+  .lafdemo-head { padding:22px 24px 14px; }
+  .lafdemo-eyebrow { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+    background:var(--cream-2); color:#6a4e1c; font-size:.72rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  }
+  .lafdemo-eyebrow::before { content:""; width:6px; height:6px; border-radius:50%; background:#2ECC71; box-shadow:0 0 0 3px rgba(46,204,113,.18); }
+  .lafdemo-title { font-family:Georgia,"Times New Roman",serif; font-size:1.5rem; margin:10px 0 6px; line-height:1.2; }
+  .lafdemo-sub { color:var(--muted); font-size:.95rem; margin:0; line-height:1.5; }
+
+  .lafdemo-bullets { margin:14px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .lafdemo-bullets li { font-size:.88rem; color:#4a4334; padding-left:20px; position:relative; line-height:1.4; }
+  .lafdemo-bullets li::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--gold);
+    position:absolute; left:6px; top:8px; }
+
+  .lafdemo-chrome { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 14px; background:#0f0f10; color:#cfc6ad; font-size:.78rem;
+  }
+  .lafdemo-chrome .url { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lafdemo-chrome .actions { display:flex; gap:6px; flex-shrink:0; }
+  .lafdemo-btn { background:transparent; border:1px solid #2a2722; color:#cfc6ad; padding:5px 10px; border-radius:8px;
+    font-size:.78rem; cursor:pointer; transition:background .15s, color .15s;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .lafdemo-btn:hover { background:#1a1815; color:#fff; }
+
+  .lafdemo-frame { position:relative; aspect-ratio:16/10; background:#0f0f10; overflow:hidden; }
+  .lafdemo-frame iframe { position:absolute; inset:0; width:100%; height:100%; border:0; opacity:0; transition:opacity .35s; }
+  .lafdemo-frame iframe.loaded { opacity:1; }
+
+  /* loading skeleton */
+  .lafdemo-skeleton { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    background:linear-gradient(135deg,#15140f,#0f0f10); color:#80715a; font-size:.85rem; pointer-events:none;
+  }
+  .lafdemo-skeleton .pulse { width:42px; height:42px; border-radius:50%; border:3px solid rgba(160,122,42,.2); border-top-color:var(--gold);
+    animation:lafdemo-spin 1s linear infinite;
+  }
+  .lafdemo-frame.loaded .lafdemo-skeleton { opacity:0; transition:opacity .25s; }
+  @keyframes lafdemo-spin { to { transform:rotate(360deg); } }
+
+  /* mobile preview card (replaces iframe on small screens) */
+  .lafdemo-mobile { display:none; padding:24px; background:linear-gradient(135deg,#1a1815,#0f0f10); color:#fbf8f1; flex:1;
+    flex-direction:column; justify-content:space-between; min-height:280px; gap:18px;
+  }
+  .lafdemo-mobile h4 { font-family:Georgia,serif; font-size:1.15rem; margin:0; color:#fbf8f1; }
+  .lafdemo-mobile p { color:#cfc6ad; font-size:.85rem; margin:0; line-height:1.5; }
+  .lafdemo-mobile .cta { display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:14px 20px; background:var(--gold); color:#0f0f10; border-radius:10px; text-decoration:none; font-weight:600;
+    transition:transform .15s; font-size:.95rem;
+  }
+  .lafdemo-mobile .cta:hover { transform:translateY(-1px); }
+  .lafdemo-mobile .note { font-size:.75rem; color:#80715a; margin-top:auto; }
+
+  /* phone breakpoint: hide iframe, show mobile card */
+  @media (max-width:760px) {
+    .lafdemo-frame, .lafdemo-chrome { display:none; }
+    .lafdemo-mobile { display:flex; }
+    .lafdemo-grid { padding:14px; gap:18px; }
+    .lafdemo-head { padding:18px 18px 10px; }
+    .lafdemo-title { font-size:1.25rem; }
+  }
+
+  /* fullscreen */
+  .lafdemo-card:fullscreen { padding:0; }
+  .lafdemo-card:fullscreen .lafdemo-head { display:none; }
+  .lafdemo-card:fullscreen .lafdemo-frame { aspect-ratio:auto; height:calc(100vh - 38px); }
+
+  /* toast */
+  .lafdemo-toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:var(--ink); color:var(--cream); padding:10px 18px; border-radius:999px; font-size:.85rem;
+    box-shadow:0 8px 24px rgba(0,0,0,.2); transition:transform .25s; pointer-events:none; z-index:9999;
+    font-family:system-ui,-apple-system,sans-serif;
+  }
+  .lafdemo-toast.show { transform:translateX(-50%) translateY(0); }
+</style>
+
+<section class="lafdemo-grid" id="lafdemo-grid">
+  <!-- ─── Demo 1: Customer Intelligence ─── -->
+  <article class="lafdemo-card" data-url="https://customer-intel-production-7102.up.railway.app/dashboard" data-label="Customer Intelligence Dashboard">
+    <header class="lafdemo-head">
+      <span class="lafdemo-eyebrow">Live demo</span>
+      <h3 class="lafdemo-title">Customer Intelligence Dashboard</h3>
+      <p class="lafdemo-sub">Pulls Google reviews, segments customers by lifetime value, drafts retention campaigns grounded in the brand's actual review language.</p>
+      <ul class="lafdemo-bullets">
+        <li>Behavior-driven segments, not demographic guesses</li>
+        <li>Per-segment LTV projection</li>
+        <li>One-click retention copy in your brand voice</li>
+      </ul>
+    </header>
+
+    <div class="lafdemo-chrome">
+      <span class="url">customer-intel-production-7102.up.railway.app</span>
+      <span class="actions">
+        <button class="lafdemo-btn" data-action="copy" aria-label="Copy demo URL">⎘ Copy</button>
+        <button class="lafdemo-btn" data-action="fullscreen" aria-label="Toggle fullscreen">⛶ Fullscreen</button>
+        <a class="lafdemo-btn" data-action="open" target="_blank" rel="noopener">↗ Open</a>
+      </span>
+    </div>
+
+    <div class="lafdemo-frame">
+      <div class="lafdemo-skeleton">
+        <div class="pulse"></div>
+        <div>Waking the demo…</div>
+      </div>
+    </div>
+
+    <div class="lafdemo-mobile">
+      <div>
+        <h4>Customer Intelligence Dashboard</h4>
+        <p>This demo is built for desktop dashboards — it doesn't fit on a phone. Tap below to open it on your laptop later, or open it now in a new tab.</p>
+      </div>
+      <a class="cta" target="_blank" rel="noopener">Open demo in new tab ↗</a>
+      <div class="note">Best viewed at 1280px or wider.</div>
+    </div>
+  </article>
+
+  <!-- ─── Demo 2: Content Generation Engine ─── -->
+  <article class="lafdemo-card" data-url="https://content-engine-production-0bfb.up.railway.app/dashboard/studio" data-label="Content Generation Engine">
+    <header class="lafdemo-head">
+      <span class="lafdemo-eyebrow">Live demo</span>
+      <h3 class="lafdemo-title">Content Generation Engine</h3>
+      <p class="lafdemo-sub">Veo 3.1 video and Nano Banana stills, all filtered through a BrandBrain voice fingerprint so the output sounds like the brand — not generic AI.</p>
+      <ul class="lafdemo-bullets">
+        <li>50 video variants per campaign, generated in parallel</li>
+        <li>Voice fingerprint scraped from real Instagram + reviews</li>
+        <li>Swipe to approve, one-click publish</li>
+      </ul>
+    </header>
+
+    <div class="lafdemo-chrome">
+      <span class="url">content-engine-production-0bfb.up.railway.app</span>
+      <span class="actions">
+        <button class="lafdemo-btn" data-action="copy" aria-label="Copy demo URL">⎘ Copy</button>
+        <button class="lafdemo-btn" data-action="fullscreen" aria-label="Toggle fullscreen">⛶ Fullscreen</button>
+        <a class="lafdemo-btn" data-action="open" target="_blank" rel="noopener">↗ Open</a>
+      </span>
+    </div>
+
+    <div class="lafdemo-frame">
+      <div class="lafdemo-skeleton">
+        <div class="pulse"></div>
+        <div>Waking the demo…</div>
+      </div>
+    </div>
+
+    <div class="lafdemo-mobile">
+      <div>
+        <h4>Content Generation Engine</h4>
+        <p>The video studio uses a wide-screen workspace. Open it on a laptop for the full experience, or tap below to launch in a new tab now.</p>
+      </div>
+      <a class="cta" target="_blank" rel="noopener">Open demo in new tab ↗</a>
+      <div class="note">Best viewed at 1280px or wider.</div>
+    </div>
+  </article>
+</section>
+
+<script>
+(function () {
+  var cards = document.querySelectorAll('#lafdemo-grid .lafdemo-card');
+  var toast;
+
+  function showToast(msg) {
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'lafdemo-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function () { toast.classList.remove('show'); }, 1800);
+  }
+
+  cards.forEach(function (card) {
+    var url = card.dataset.url;
+    var frame = card.querySelector('.lafdemo-frame');
+    var mobileCta = card.querySelector('.lafdemo-mobile .cta');
+    var openBtn = card.querySelector('[data-action="open"]');
+
+    // Wire up "Open in new tab"
+    mobileCta.href = url;
+    openBtn.href = url;
+
+    // Lazy-load iframe via IntersectionObserver
+    var loaded = false;
+    function loadFrame() {
+      if (loaded) return;
+      loaded = true;
+      var iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.title = card.dataset.label;
+      iframe.loading = 'lazy';
+      iframe.setAttribute('allow', 'clipboard-write; fullscreen');
+      iframe.addEventListener('load', function () {
+        iframe.classList.add('loaded');
+        frame.classList.add('loaded');
+      });
+      frame.appendChild(iframe);
+    }
+
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { if (e.isIntersecting) { loadFrame(); io.disconnect(); } });
+      }, { rootMargin: '200px' });
+      io.observe(frame);
+    } else {
+      loadFrame(); // fallback for ancient browsers
+    }
+
+    // Action buttons
+    card.querySelectorAll('[data-action="copy"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(url).then(function () { showToast('Demo URL copied'); });
+      });
+    });
+    card.querySelectorAll('[data-action="fullscreen"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else if (card.requestFullscreen) {
+          card.requestFullscreen();
+        } else {
+          window.open(url, '_blank', 'noopener');
+        }
+      });
+    });
+  });
+})();
+</script>
