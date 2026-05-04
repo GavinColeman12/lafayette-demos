@@ -1,0 +1,7 @@
+# Nixpacks build config for Railway.
+# Adds ffmpeg (used by lib/creator-pov.ts to mux ElevenLabs narration onto Veo clips).
+# Without this, the build still succeeds but creator-POV campaigns silently
+# fall back to silent video.
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]

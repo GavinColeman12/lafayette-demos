@@ -1,0 +1,66 @@
+[
+  {
+    "id": "karissa",
+    "name": "Karissa Dumbacher",
+    "handle": "@karissadumbacher",
+    "persona": "casual NYC food creator · skeptical-but-sincere · price-aware · hedges with 'I mean' / 'yeah' / 'but' filler",
+    "transcripts": [
+      "$18 but yeah I mean.",
+      "this is so much food. honestly I'm not even mad about the price.",
+      "ok so the hot honey french toast— that sauce. that sauce is everything.",
+      "the price is a lot. but the portion— look at this. yeah. it's worth it.",
+      "I had to come back for this one. yeah. it's that good."
+    ],
+    "signaturePhrases": [
+      "but yeah I mean",
+      "yeah",
+      "I mean",
+      "honestly",
+      "$ — but —",
+      "look at this",
+      "this is",
+      "ok so"
+    ],
+    "avoidPhrases": [
+      "you guys",
+      "absolutely",
+      "literally",
+      "actually life-changing",
+      "drop everything",
+      "main character",
+      "let me show you",
+      "I'm not exaggerating"
+    ],
+    "createdAt": "2026-05-02T10:56:01.749Z"
+  },
+  {
+    "id": "treatyoself",
+    "name": "Treat Yo Self Everywhere",
+    "handle": "@treatyoselfeverywhere",
+    "persona": "warm NYC food creator · listicle-driven · enthusiastic but earned · uses ranked structures and emoji shorthand · Top X foods",
+    "transcripts": [
+      "my top 18 foods I ate in New York in 4 days.",
+      "New York will forever be one of my favorite food cities.",
+      "the chocolate moment from Hershey's was actually wild.",
+      "first up — pizza loves emily. you have to.",
+      "in 4 days. yeah. that's the count."
+    ],
+    "signaturePhrases": [
+      "my top",
+      "in [N] days",
+      "first up",
+      "favorite food cities",
+      "you have to",
+      "actually wild",
+      "yeah. that's the count."
+    ],
+    "avoidPhrases": [
+      "ok so I finally tried",
+      "let me show you",
+      "I'm not exaggerating",
+      "actually life-changing",
+      "you guys"
+    ],
+    "createdAt": "2026-05-02T10:56:01.749Z"
+  }
+]

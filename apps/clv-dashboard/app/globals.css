@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Lafayette palette — warm Parisian on near-black */
+    --background: 30 18% 7%;            /* #14110d espresso black */
+    --card: 28 20% 11%;                 /* #1f1a14 elevated card */
+    --popover: 28 20% 11%;
+    --muted: 28 14% 17%;                /* #2c2620 input bg */
+    --accent: 28 14% 17%;
+    --secondary: 28 14% 17%;
+
+    --foreground: 38 30% 96%;           /* #faf6ef warm cream */
+    --card-foreground: 38 30% 96%;
+    --popover-foreground: 38 30% 96%;
+    --primary: 38 30% 96%;
+    --primary-foreground: 30 18% 7%;
+    --secondary-foreground: 38 30% 96%;
+    --accent-foreground: 38 30% 96%;
+    --muted-foreground: 35 18% 70%;     /* #c2b8a4 */
+    --subtle-foreground: 35 12% 50%;    /* #877f6f */
+
+    /* Brand: cabernet red + champagne gold */
+    --brand: 354 70% 48%;               /* #cf2839 cabernet */
+    --brand-foreground: 38 30% 96%;
+    --brand-2: 38 90% 60%;              /* #f3a83b ochre */
+    --brand-gold: 43 79% 62%;           /* #efc658 champagne */
+
+    --success: 142 50% 48%;             /* #3da870 olive green */
+    --success-foreground: 38 30% 96%;
+    --warning: 32 90% 56%;
+    --warning-foreground: 30 18% 7%;
+    --destructive: 0 71% 56%;
+    --destructive-foreground: 38 30% 96%;
+
+    --border: 28 16% 20%;
+    --input: 28 16% 20%;
+    --border-strong: 28 16% 28%;
+    --ring: 354 70% 48%;
+    --radius: 0.875rem;
+  }
+
+  .dark { color-scheme: dark; }
+
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    background-image:
+      radial-gradient(ellipse at top, hsl(354 70% 48% / 0.06), transparent 60%),
+      radial-gradient(ellipse at bottom right, hsl(38 90% 60% / 0.04), transparent 60%);
+  }
+  html, body { min-height: 100%; }
+  h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.1; }
+
+  .tabular, code, .font-mono { font-variant-numeric: tabular-nums; }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-serif), ui-serif, Georgia, serif;
+    letter-spacing: -0.02em;
+    font-feature-settings: "liga", "dlig";
+    font-weight: 500;
+  }
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+  .text-subtle { color: hsl(var(--subtle-foreground)); }
+  .text-brand-2 { color: hsl(var(--brand-2)); }
+  .text-brand-gold { color: hsl(var(--brand-gold)); }
+  .bg-brand-2 { background-color: hsl(var(--brand-2)); }
+  .bg-elevated { background-color: hsl(var(--card)); }
+  .bg-input-soft { background-color: hsl(var(--muted)); }
+  .border-hairline { border-color: hsl(var(--border)); }
+  .border-hairline-strong { border-color: hsl(var(--border-strong)); }
+
+  .glass {
+    background: linear-gradient(180deg, hsl(var(--card) / 0.92), hsl(var(--card) / 0.78));
+    backdrop-filter: blur(8px);
+  }
+
+  .glow-cabernet {
+    box-shadow:
+      0 0 0 1px hsl(354 70% 48% / 0.18),
+      0 6px 30px -8px hsl(354 70% 48% / 0.55),
+      inset 0 1px 0 0 hsl(38 90% 60% / 0.10);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+}
+
+.recharts-tooltip-wrapper { outline: none !important; }
+.recharts-surface { overflow: visible; }
+
+.shimmer {
+  position: relative; overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: linear-gradient(90deg, transparent, hsl(38 30% 96% / 0.06), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 2.4s infinite;
+}

@@ -1,0 +1,16 @@
+[theme]
+# Lafayette palette: warm cream + bistro gold + deep espresso
+base = "light"
+primaryColor = "#a07a2a"
+backgroundColor = "#fbf8f1"
+secondaryBackgroundColor = "#f3ead4"
+textColor = "#2a2218"
+font = "serif"
+
+[server]
+# Allow embedding the iframe'd Next.js apps without sandbox issues
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

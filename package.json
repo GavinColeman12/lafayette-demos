@@ -1,0 +1,22 @@
+{
+  "name": "lafayette-demos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lafayette Grand Café & Bakery — paired demo monorepo (CLV Dashboard + Campaign Studio).",
+  "workspaces": [
+    "apps/clv-dashboard",
+    "apps/pastry-pipeline"
+  ],
+  "scripts": {
+    "dev": "npm-run-all -p dev:*",
+    "dev:clv": "npm --workspace apps/clv-dashboard run dev",
+    "dev:pastry": "npm --workspace apps/pastry-pipeline run dev",
+    "build:clv": "npm --workspace apps/clv-dashboard run build",
+    "build:pastry": "npm --workspace apps/pastry-pipeline run build",
+    "start:clv": "npm --workspace apps/clv-dashboard run start",
+    "start:pastry": "npm --workspace apps/pastry-pipeline run start"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}

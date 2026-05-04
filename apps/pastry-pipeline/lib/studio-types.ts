@@ -1,0 +1,159 @@
+/**
+ * Campaign Studio types — the data model behind the Veo video generation +
+ * human review + publishing pipeline.
+ */
+
+export type CampaignStatus = "drafting" | "generating" | "ready_for_review" | "publishing" | "complete" | "failed";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type Verdict = "pending" | "approved" | "rejected" | "starred";
+export type Platform = "instagram_reel" | "tiktok" | "instagram_story" | "google_post";
+export type PublishStatus = "draft" | "scheduled" | "posted" | "failed";
+
+export type CampaignBrief = {
+  id: string;
+  pastrySlug: string;
+  pastryName: string;
+  hookType:
+    | "behind_scenes"
+    | "ugc_quote"
+    | "menu_drop"
+    | "limited_run"
+    | "pairing"
+    | "process_video"
+    | "ranking"
+    | "asmr"
+    | "transformation";
+  vibe: "luxe" | "playful" | "asmr" | "documentary" | "creator_pov" | "noir";
+  audience: "tourists" | "regulars" | "wedding_planners" | "instagrammers" | "concierge";
+  goal: string;
+  variantCount: number;
+  durationSec: 8 | 16; // Veo 3 = 8s; we can chain two for 16s reels
+  aspect: "9:16" | "1:1" | "16:9";
+  createdAt: string;
+  status: CampaignStatus;
+  notes?: string;
+  /** Which ElevenLabs voice should narrate creator-POV stitches. Defaults
+   * to env (Laura) if missing. Can be a preset voiceId or a cloned voiceId. */
+  voiceId?: string;
+  /** Optional cadence-style preset id (from voice-clone/styles.json) —
+   * locks the SCRIPT (not the voice) to mimic a specific creator's rhythm. */
+  styleId?: string;
+  /** Content-bucket id (e.g. "asmr", "kitchen_montage", "ranking", "menu_drop").
+   * When set, the script generator routes through the bucket's systemBrief
+   * to produce the right SHAPE of content for that type. */
+  bucketId?: string;
+  /** BrandBrain client id. When set, every generated prompt + script is
+   * passed through this brand's voice profile so output sounds like THEM. */
+  clientId?: string;
+};
+
+export type VeoPrompt = {
+  id: string;
+  campaignId: string;
+  index: number;
+  prompt: string;        // the text-to-video prompt sent to Veo
+  caption: string;       // the social-post caption (separate from video prompt)
+  styleTag: string;      // human label e.g. "Tilt-down · golden hour"
+  seedImage?: string;    // optional image-to-video seed (URL)
+  hashtags: string[];
+  // ─── Creator POV extension ─────────────────────────────────
+  // When this prompt belongs to a Creator-POV variant, we need a stitching
+  // plan: multiple shot prompts, a narration script, and total length.
+  // The campaign worker spawns one Veo job per shot, then runs ffmpeg to
+  // merge them with the ElevenLabs narration.
+  creatorPov?: {
+    narration: string;
+    /** Same as `narration` plus inline ElevenLabs v3 audio tags
+     * ([breath] [chuckles] [pauses] etc). This is what we actually send
+     * to TTS — `narration` is the clean transcript. */
+    narrationVoiced?: string;
+    hookLine: string;
+    totalSeconds: number;
+    shots: Array<{
+      index: number;
+      /** Verbatim substring of narration this shot is locked to — used at
+       * stitch time to look up the real audio start/end timestamps. */
+      narrationPhrase: string;
+      startSec: number;
+      endSec: number;
+      prompt: string;
+      onScreenText?: string;
+    }>;
+  };
+};
+
+export type VideoJob = {
+  id: string;
+  campaignId: string;
+  promptId: string;
+  status: JobStatus;
+  provider: "veo3" | "veo3_fast" | "mock";
+  externalJobId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  /** For creator-POV multi-shot variants: the rendered clip URL gets stashed
+   * here when the job succeeds, so the stitcher can find each shot. */
+  clipUrl?: string;
+};
+
+export type GeneratedVideo = {
+  id: string;
+  jobId: string;
+  campaignId: string;
+  promptId: string;
+  prompt: VeoPrompt;
+  videoUrl: string;
+  thumbnailUrl: string;
+  durationSec: number;
+  aspect: string;
+  resolution: string;
+  generatedAt: string;
+  verdict: Verdict;
+  reviewedAt?: string;
+  reviewerNote?: string;
+  qualityScore: number;  // 0..100, our post-generation auto-rating
+  // Engagement forecast (calculated, not measured)
+  forecast: {
+    expectedReach: number;
+    expectedEngagementRate: number;
+    riskFlags: string[];
+  };
+};
+
+export type ScheduledPost = {
+  id: string;
+  videoId: string;
+  campaignId: string;
+  platform: Platform;
+  status: PublishStatus;
+  scheduledFor?: string;
+  postedAt?: string;
+  externalPostId?: string;
+  externalPostUrl?: string;
+  caption: string;
+  hashtags: string[];
+};
+
+/** Campaign + everything joined — what the UI consumes. */
+export type CampaignDetail = {
+  brief: CampaignBrief;
+  prompts: VeoPrompt[];
+  jobs: VideoJob[];
+  videos: GeneratedVideo[];
+  scheduledPosts: ScheduledPost[];
+  stats: {
+    totalPrompts: number;
+    totalJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    runningJobs: number;
+    queuedJobs: number;
+    videosReady: number;
+    videosApproved: number;
+    videosRejected: number;
+    videosStarred: number;
+    postsScheduled: number;
+    postsPublished: number;
+  };
+};

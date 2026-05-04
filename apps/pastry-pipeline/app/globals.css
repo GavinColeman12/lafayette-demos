@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Pastry palette — pistachio, butter, raspberry */
+    --background: 30 22% 8%;            /* warm graphite */
+    --card: 30 24% 12%;
+    --popover: 30 24% 12%;
+    --muted: 30 16% 18%;
+    --accent: 30 16% 18%;
+    --secondary: 30 16% 18%;
+
+    --foreground: 38 38% 96%;           /* cream */
+    --card-foreground: 38 38% 96%;
+    --popover-foreground: 38 38% 96%;
+    --primary: 38 38% 96%;
+    --primary-foreground: 30 22% 8%;
+    --secondary-foreground: 38 38% 96%;
+    --accent-foreground: 38 38% 96%;
+    --muted-foreground: 35 20% 72%;
+    --subtle-foreground: 35 12% 50%;
+
+    /* Brand: pistachio + matcha */
+    --brand: 88 55% 52%;                /* pistachio */
+    --brand-foreground: 30 22% 8%;
+    --brand-2: 16 80% 56%;              /* raspberry */
+    --brand-gold: 43 79% 60%;           /* butter */
+
+    --success: 142 60% 48%;
+    --success-foreground: 38 38% 96%;
+    --warning: 32 90% 56%;
+    --warning-foreground: 30 22% 8%;
+    --destructive: 0 71% 56%;
+    --destructive-foreground: 38 38% 96%;
+
+    --border: 30 18% 20%;
+    --input: 30 18% 20%;
+    --border-strong: 30 18% 28%;
+    --ring: 88 55% 52%;
+    --radius: 0.875rem;
+  }
+
+  .dark { color-scheme: dark; }
+
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    background-image:
+      radial-gradient(ellipse at top right, hsl(88 55% 52% / 0.08), transparent 60%),
+      radial-gradient(ellipse at bottom left, hsl(43 79% 60% / 0.05), transparent 65%);
+  }
+  html, body { min-height: 100%; }
+  h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.1; }
+
+  .tabular, code, .font-mono { font-variant-numeric: tabular-nums; }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-serif), ui-serif, Georgia, serif;
+    letter-spacing: -0.02em;
+    font-feature-settings: "liga", "dlig";
+    font-weight: 500;
+  }
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+  .text-subtle { color: hsl(var(--subtle-foreground)); }
+  .text-brand-2 { color: hsl(var(--brand-2)); }
+  .text-brand-gold { color: hsl(var(--brand-gold)); }
+  .bg-brand-2 { background-color: hsl(var(--brand-2)); }
+  .bg-elevated { background-color: hsl(var(--card)); }
+  .bg-input-soft { background-color: hsl(var(--muted)); }
+  .border-hairline { border-color: hsl(var(--border)); }
+  .border-hairline-strong { border-color: hsl(var(--border-strong)); }
+
+  .glass {
+    background: linear-gradient(180deg, hsl(var(--card) / 0.94), hsl(var(--card) / 0.78));
+    backdrop-filter: blur(8px);
+  }
+
+  .glow-pistachio {
+    box-shadow:
+      0 0 0 1px hsl(88 55% 52% / 0.22),
+      0 6px 30px -8px hsl(88 55% 52% / 0.55),
+      inset 0 1px 0 0 hsl(43 79% 60% / 0.10);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+}
+
+.recharts-tooltip-wrapper { outline: none !important; }
+.recharts-surface { overflow: visible; }
