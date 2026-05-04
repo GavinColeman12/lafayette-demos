@@ -166,6 +166,23 @@ export type ScheduledPost = {
   hashtags: string[];
 };
 
+/**
+ * A user-composed final carousel. After approving individual image variants,
+ * the user can hand-pick + reorder slides FROM ACROSS multiple variants into
+ * the actual post they want to publish. This lives separately from the
+ * generated `images` so the original generation evidence is preserved.
+ */
+export type ComposedCarousel = {
+  id: string;
+  campaignId: string;
+  /** Ordered slide list — references existing GeneratedImage.id values. */
+  slideImageIds: string[];
+  caption: string;
+  hashtags: string[];
+  createdAt: string;
+  updatedAt?: string;
+};
+
 /** Campaign + everything joined — what the UI consumes. */
 export type CampaignDetail = {
   brief: CampaignBrief;
@@ -174,6 +191,8 @@ export type CampaignDetail = {
   videos: GeneratedVideo[];
   /** For image / carousel campaigns. Empty for video campaigns. */
   images: GeneratedImage[];
+  /** User-composed final carousels — the actual posts they intend to ship. */
+  composedCarousels: ComposedCarousel[];
   scheduledPosts: ScheduledPost[];
   stats: {
     totalPrompts: number;

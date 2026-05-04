@@ -8,6 +8,7 @@ import path from "node:path";
 import type {
   CampaignBrief,
   CampaignDetail,
+  ComposedCarousel,
   GeneratedImage,
   GeneratedVideo,
   ScheduledPost,
@@ -24,11 +25,12 @@ type Db = {
   jobs: VideoJob[];
   videos: GeneratedVideo[];
   images: GeneratedImage[];
+  composedCarousels: ComposedCarousel[];
   posts: ScheduledPost[];
 };
 
 function emptyDb(): Db {
-  return { campaigns: [], prompts: [], jobs: [], videos: [], images: [], posts: [] };
+  return { campaigns: [], prompts: [], jobs: [], videos: [], images: [], composedCarousels: [], posts: [] };
 }
 
 function readDb(): Db {
@@ -46,6 +48,7 @@ function readDb(): Db {
       jobs: parsed.jobs ?? [],
       videos: parsed.videos ?? [],
       images: parsed.images ?? [],
+      composedCarousels: parsed.composedCarousels ?? [],
       posts: parsed.posts ?? [],
     };
   } catch {
@@ -86,6 +89,7 @@ export async function getCampaignDetail(id: string): Promise<CampaignDetail | nu
     const jobs = db.jobs.filter((j) => j.campaignId === id);
     const videos = db.videos.filter((v) => v.campaignId === id);
     const images = db.images.filter((i) => i.campaignId === id);
+    const composedCarousels = db.composedCarousels.filter((c) => c.campaignId === id);
     const posts = db.posts.filter((p) => p.campaignId === id);
 
     // Carousel-aware: a "variant" is one prompt/post; carousels have multiple
@@ -109,6 +113,7 @@ export async function getCampaignDetail(id: string): Promise<CampaignDetail | nu
       jobs,
       videos,
       images,
+      composedCarousels,
       scheduledPosts: posts,
       stats: {
         totalPrompts: prompts.length,
@@ -161,6 +166,26 @@ export async function updateJob(id: string, patch: Partial<VideoJob>): Promise<V
     if (idx < 0) return null;
     db.jobs[idx] = { ...db.jobs[idx], ...patch };
     return db.jobs[idx];
+  });
+}
+
+export async function addComposedCarousel(c: ComposedCarousel): Promise<ComposedCarousel> {
+  return withDb((db) => {
+    const existing = db.composedCarousels.findIndex((x) => x.id === c.id);
+    if (existing >= 0) {
+      db.composedCarousels[existing] = { ...c, updatedAt: new Date().toISOString() };
+      return db.composedCarousels[existing];
+    }
+    db.composedCarousels.push(c);
+    return c;
+  });
+}
+
+export async function deleteComposedCarousel(id: string): Promise<boolean> {
+  return withDb((db) => {
+    const before = db.composedCarousels.length;
+    db.composedCarousels = db.composedCarousels.filter((c) => c.id !== id);
+    return db.composedCarousels.length < before;
   });
 }
 

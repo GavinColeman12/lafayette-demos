@@ -134,16 +134,14 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {/* Image / carousel campaigns render here. The full IG-carousel preview
-          (PostSimulatorDialog) wiring for image variants ships next iteration;
-          for now we show the grid + per-variant caption so output is at least
-          visible and clickable. */}
+      {/* Image / carousel campaigns: swipe-to-approve + compose-final-post flow. */}
       {data.images && data.images.length > 0 && (
         <ImageVariantsSection
           images={data.images}
           brief={data.brief}
           campaignId={campaignId}
-          onChange={(nextImages) => setData({ ...data, images: nextImages })}
+          composedCarousels={data.composedCarousels ?? []}
+          onChange={(next) => setData({ ...data, ...next })}
         />
       )}
 
@@ -603,13 +601,16 @@ function ImageVariantsSection({
   images,
   brief,
   campaignId,
+  composedCarousels,
   onChange,
 }: {
   images: any[];
   brief: any;
   campaignId: string;
-  onChange: (next: any[]) => void;
+  composedCarousels: any[];
+  onChange: (patch: { images?: any[]; composedCarousels?: any[] }) => void;
 }) {
+  const [mode, setMode] = useState<"pick" | "compose">("pick");
   // Group by variantIndex
   const variants = new Map<number, any[]>();
   for (const img of images) {
@@ -637,7 +638,7 @@ function ImageVariantsSection({
         ? { ...img, verdict, reviewedAt: new Date().toISOString() }
         : img,
     );
-    onChange(next);
+    onChange({ images: next });
     setActiveIdx((i) => i + 1);
     fetch(`/api/studio/images/${campaignId}__${variantIndex}`, {
       method: "PATCH",
@@ -646,25 +647,63 @@ function ImageVariantsSection({
     }).catch(() => {});
   }
 
+  // Approved + starred slides flattened — the pool the user composes from.
+  const approvedSlides = sorted
+    .filter((v) => v.verdict === "approved" || v.verdict === "starred")
+    .flatMap((v) => v.slides);
+  const canCompose = approvedSlides.length >= 2;
+
   const totalVariants = sorted.length;
   const approvedCount = sorted.filter((v) => v.verdict === "approved" || v.verdict === "starred").length;
   const rejectedCount = sorted.filter((v) => v.verdict === "rejected").length;
 
   return (
     <Card>
-      <CardHeader className="pb-3 flex-row items-center justify-between">
-        <CardTitle className="text-base">
-          {brief?.mediaType === "carousel" ? "Carousel posts" : "Image posts"}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {totalVariants} variant{totalVariants === 1 ? "" : "s"}
-            {brief?.mediaType === "carousel" && sorted[0] && ` · ${sorted[0].slides.length} slides each`}
-            {" · "}{approvedCount} approved · {rejectedCount} rejected · {pending.length} to review
-          </span>
-        </CardTitle>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">
+            {brief?.mediaType === "carousel" ? "Carousel posts" : "Image posts"}
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {totalVariants} variant{totalVariants === 1 ? "" : "s"}
+              {brief?.mediaType === "carousel" && sorted[0] && ` · ${sorted[0].slides.length} slides each`}
+              {" · "}{approvedCount} approved · {rejectedCount} rejected · {pending.length} to review
+            </span>
+          </CardTitle>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setMode("pick")}
+              className={cn(
+                "rounded-lg px-3 py-1 text-xs font-medium transition",
+                mode === "pick" ? "bg-brand text-brand-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Pick
+            </button>
+            <button
+              onClick={() => canCompose && setMode("compose")}
+              disabled={!canCompose}
+              title={canCompose ? "Compose the final carousel from approved slides" : "Approve at least 2 slides first"}
+              className={cn(
+                "rounded-lg px-3 py-1 text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed",
+                mode === "compose" ? "bg-brand text-brand-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Compose ({approvedSlides.length})
+            </button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {pending.length === 0 ? (
-          <ImageGridReview sorted={sorted} brief={brief} campaignId={campaignId} onChange={(next) => onChange(next)} images={images} />
+        {mode === "compose" ? (
+          <ComposePane
+            availableSlides={approvedSlides}
+            brief={brief}
+            campaignId={campaignId}
+            composedCarousels={composedCarousels}
+            onChange={(nextComposed) => onChange({ composedCarousels: nextComposed })}
+          />
+        ) : pending.length === 0 ? (
+          <ImageGridReview sorted={sorted} brief={brief} campaignId={campaignId} onChange={(next) => onChange({ images: next })} images={images} />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
             {/* IG simulator — the review canvas */}
@@ -739,6 +778,227 @@ function IgPostFrame({ variant, brief }: { variant: { variantIndex: number; slid
   return (
     <div className="rounded-2xl border border-border bg-black overflow-hidden shadow-xl">
       <InstagramFeedSim post={post} />
+    </div>
+  );
+}
+
+/**
+ * Compose pane — pick approved slides from across variants and reorder them
+ * into a single final carousel post. The user may write their own caption
+ * (defaults to the first picked slide's caption) and edit hashtags.
+ *
+ * On Save: POST /api/studio/composed-carousels persists the slide order +
+ * caption. The carousel then renders in the "Composed posts" header above
+ * the variant review (next iteration adds an explicit ScheduledPost flow).
+ */
+function ComposePane({
+  availableSlides,
+  brief,
+  campaignId,
+  composedCarousels,
+  onChange,
+}: {
+  availableSlides: any[];
+  brief: any;
+  campaignId: string;
+  composedCarousels: any[];
+  onChange: (next: any[]) => void;
+}) {
+  const [orderedIds, setOrderedIds] = useState<string[]>([]);
+  const [caption, setCaption] = useState("");
+  const [hashtagsText, setHashtagsText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Default caption + hashtags from the first picked slide (live, not on mount)
+  const firstPicked = orderedIds.length > 0 ? availableSlides.find((s) => s.id === orderedIds[0]) : null;
+  useEffect(() => {
+    if (firstPicked && !caption) setCaption(firstPicked.caption ?? "");
+    if (firstPicked && !hashtagsText && Array.isArray(firstPicked.hashtags)) {
+      setHashtagsText(firstPicked.hashtags.map((h: string) => `#${h.replace(/^#/, "")}`).join(" "));
+    }
+  }, [firstPicked?.id]);
+
+  const orderedSlides = orderedIds.map((id) => availableSlides.find((s) => s.id === id)).filter(Boolean);
+  const unpicked = availableSlides.filter((s) => !orderedIds.includes(s.id));
+
+  function add(id: string) {
+    setOrderedIds((arr) => [...arr, id]);
+  }
+  function remove(id: string) {
+    setOrderedIds((arr) => arr.filter((x) => x !== id));
+  }
+  function move(id: string, dir: -1 | 1) {
+    setOrderedIds((arr) => {
+      const i = arr.indexOf(id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return arr;
+      const out = arr.slice();
+      [out[i], out[j]] = [out[j], out[i]];
+      return out;
+    });
+  }
+  async function save() {
+    if (orderedIds.length === 0 || busy) return;
+    setBusy(true);
+    try {
+      const hashtags = hashtagsText
+        .split(/[\s,]+/)
+        .map((h) => h.replace(/^#/, ""))
+        .filter(Boolean);
+      const res = await fetch("/api/studio/composed-carousels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, slideImageIds: orderedIds, caption, hashtags }),
+      });
+      const j = await res.json();
+      if (j.composedCarousel) {
+        onChange([...composedCarousels.filter((c) => c.id !== j.composedCarousel.id), j.composedCarousel]);
+        setOrderedIds([]);
+        setCaption("");
+        setHashtagsText("");
+      }
+    } catch {} finally {
+      setBusy(false);
+    }
+  }
+
+  // Synthesized FeedPost for live IG preview
+  const previewPost = {
+    slides: orderedSlides.map((s) => ({ kind: "image" as const, url: s.imageUrl })),
+    caption,
+    hashtags: hashtagsText.split(/[\s,]+/).map((h) => h.replace(/^#/, "")).filter(Boolean),
+    account: brief?.clientId ? { handle: brief.clientId, displayName: brief.clientId, verified: true } : undefined,
+    stats: { likes: 18_204, comments: 412 },
+    postedAt: "2h",
+  };
+
+  return (
+    <div className="space-y-5">
+      {composedCarousels.length > 0 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+          <div className="text-[10px] uppercase tracking-wider text-emerald-300 mb-2">
+            {composedCarousels.length} composed post{composedCarousels.length === 1 ? "" : "s"} saved
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {composedCarousels.map((c) => {
+              const firstId = c.slideImageIds[0];
+              const firstSlide = availableSlides.find((s) => s.id === firstId);
+              return (
+                <div key={c.id} className="shrink-0 rounded-lg border border-border bg-card overflow-hidden">
+                  {firstSlide && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={firstSlide.imageUrl} alt="" className="w-24 h-24 object-cover" />
+                  )}
+                  <div className="px-2 py-1 text-[10px] text-muted-foreground">{c.slideImageIds.length} slides</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[auto_1fr]">
+        {/* Live IG preview */}
+        <div className="mx-auto w-full max-w-[380px]">
+          {orderedSlides.length === 0 ? (
+            <div className="aspect-[9/16] rounded-2xl border border-dashed border-border bg-card/40 flex items-center justify-center text-center p-6">
+              <p className="text-sm text-muted-foreground">
+                Pick approved slides on the right →<br />They'll appear here as the live carousel preview.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-black overflow-hidden shadow-xl">
+              <InstagramFeedSim post={previewPost} />
+            </div>
+          )}
+        </div>
+
+        {/* Compose controls */}
+        <div className="space-y-4">
+          {/* Ordered carousel */}
+          <div>
+            <div className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+              Final carousel · {orderedSlides.length} slide{orderedSlides.length === 1 ? "" : "s"} · drag-order with arrows
+            </div>
+            {orderedSlides.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+                Click slides below to add them to the carousel.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {orderedSlides.map((s, i) => (
+                  <div key={s.id} className="relative group rounded-lg overflow-hidden border border-brand/40 bg-card">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.imageUrl} alt="" className="w-full aspect-square object-cover" />
+                    <div className="absolute left-1 top-1 rounded-full bg-brand text-brand-foreground px-1.5 py-0.5 text-[10px] font-bold">
+                      {i + 1}
+                    </div>
+                    <div className="absolute right-1 top-1 flex gap-0.5">
+                      <button onClick={() => move(s.id, -1)} disabled={i === 0} className="rounded bg-black/70 px-1 py-0.5 text-[10px] text-white disabled:opacity-30">↑</button>
+                      <button onClick={() => move(s.id, 1)} disabled={i === orderedSlides.length - 1} className="rounded bg-black/70 px-1 py-0.5 text-[10px] text-white disabled:opacity-30">↓</button>
+                      <button onClick={() => remove(s.id)} className="rounded bg-black/70 px-1 py-0.5 text-[10px] text-white">×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Available pool */}
+          {unpicked.length > 0 && (
+            <div>
+              <div className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Available · {unpicked.length} approved slide{unpicked.length === 1 ? "" : "s"} · click to add
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                {unpicked.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => add(s.id)}
+                    className="rounded-lg overflow-hidden border border-border bg-card hover:border-brand transition"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.imageUrl} alt="" className="w-full aspect-square object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Caption + hashtags + save */}
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div>
+              <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Caption</div>
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                rows={3}
+                placeholder="Edit the caption for this composed post"
+                className="w-full rounded-lg border border-border bg-muted p-3 text-sm leading-relaxed resize-y"
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Hashtags</div>
+              <input
+                type="text"
+                value={hashtagsText}
+                onChange={(e) => setHashtagsText(e.target.value)}
+                placeholder="#lafayette #frenchbistro …"
+                className="w-full h-9 rounded-lg border border-border bg-muted px-3 text-sm"
+              />
+            </div>
+            <Button
+              onClick={save}
+              disabled={busy || orderedSlides.length === 0}
+              variant="brand"
+              size="lg"
+              className="w-full"
+            >
+              {busy ? "Saving…" : `Save composed carousel · ${orderedSlides.length} slide${orderedSlides.length === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
