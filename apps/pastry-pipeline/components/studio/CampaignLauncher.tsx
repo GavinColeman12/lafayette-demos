@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Film, RefreshCw, Flame, Clock, Mic2, LayoutGrid } from "lucide-react";
+import { Sparkles, Film, RefreshCw, Flame, Clock, Mic2, LayoutGrid, Wand2, Loader2 } from "lucide-react";
 import { CONTENT_BUCKETS, FAMILIES, type ContentBucket } from "@/lib/content-buckets";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +72,32 @@ export function CampaignLauncher({
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Goal-regenerator state — keeps a small history so successive clicks
+  // produce non-repeating suggestions.
+  const [goalSuggesting, setGoalSuggesting] = useState(false);
+  const [priorGoals, setPriorGoals] = useState<string[]>([]);
+  async function suggestGoal() {
+    if (goalSuggesting) return;
+    setGoalSuggesting(true);
+    try {
+      const res = await fetch("/api/studio/suggest-goal", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pastrySlug, vibe, hookType, audience, bucketId,
+          previous: [...priorGoals, goal].filter(Boolean),
+        }),
+      });
+      const j = await res.json();
+      if (j.goal) {
+        setPriorGoals((p) => [...p.slice(-9), goal].filter(Boolean));
+        setGoal(j.goal);
+      }
+    } catch {} finally {
+      setGoalSuggesting(false);
+    }
+  }
 
   // Voice + cadence-style picker (creator-POV only)
   const [voiceId, setVoiceId] = useState<string>("");        // empty → default Laura
@@ -262,12 +288,28 @@ export function CampaignLauncher({
           </select>
         </Field>
         <Field label="Goal">
-          <input
-            type="text"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-sm"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={goal}
+              placeholder={goalSuggesting ? "Generating…" : "What is this campaign trying to drive?"}
+              onChange={(e) => setGoal(e.target.value)}
+              className="h-9 flex-1 rounded-lg border border-border bg-muted px-3 text-sm"
+            />
+            <button
+              type="button"
+              onClick={suggestGoal}
+              disabled={goalSuggesting}
+              title={goal ? "Regenerate goal" : "Generate goal from your selections"}
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:text-brand hover:border-brand transition disabled:opacity-50"
+            >
+              {goalSuggesting ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />…</>
+              ) : (
+                <><Wand2 className="h-3.5 w-3.5" />{goal ? "Regenerate" : "Generate"}</>
+              )}
+            </button>
+          </div>
         </Field>
       </div>
 
