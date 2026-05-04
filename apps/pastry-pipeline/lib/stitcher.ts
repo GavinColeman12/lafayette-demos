@@ -68,6 +68,56 @@ export async function ffmpegIsAvailable(): Promise<boolean> {
 }
 
 /**
+ * Concat 2+ Veo clips head-to-tail using their native audio. Used for
+ * visual-only multi-shot videos (durationSec > 8 with no Creator-POV
+ * narration) — e.g. a 24s "how the croissant is made" process video that's
+ * stitched from three 8s Veo clips.
+ *
+ * Uses ffmpeg's concat demuxer for speed (no re-encode if codecs match) and
+ * falls back to filter-graph concat if codecs differ.
+ */
+export async function concatClips(params: {
+  clipPaths: string[];
+  outName?: string;
+}): Promise<{ outputPath: string; outputFilename: string; durationSec: number }> {
+  if (!(await ffmpegIsAvailable())) throw new Error(`ffmpeg not available at ${FFMPEG}`);
+  const { clipPaths } = params;
+  if (clipPaths.length === 0) throw new Error("no clips to concat");
+  for (const c of clipPaths) if (!fs.existsSync(c)) throw new Error(`clip missing: ${c}`);
+
+  const outFilename = params.outName || `concat-${Date.now()}.mp4`;
+  const outPath = path.join(VEO_CACHE, outFilename);
+  fs.mkdirSync(VEO_CACHE, { recursive: true });
+
+  // Build a temp concat list file (demuxer expects "file 'path'\n" lines)
+  const listPath = path.join(VEO_CACHE, `concat-${Date.now()}.txt`);
+  fs.writeFileSync(listPath, clipPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n") + "\n");
+
+  // Filter-graph concat re-encodes to one consistent stream — safer when Veo
+  // returns clips with slight metadata differences. The cost is ~5s of CPU
+  // for a 24s output, which is negligible compared to Veo's 30s+ render time.
+  const args = [
+    "-y",
+    ...clipPaths.flatMap((p) => ["-i", p]),
+    "-filter_complex",
+    `${clipPaths.map((_, i) => `[${i}:v:0][${i}:a:0]`).join("")}concat=n=${clipPaths.length}:v=1:a=1[outv][outa]`,
+    "-map", "[outv]",
+    "-map", "[outa]",
+    "-c:v", "libx264",
+    "-preset", "fast",
+    "-crf", "20",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",
+    outPath,
+  ];
+  await exec(FFMPEG, args, { maxBuffer: 16 * 1024 * 1024 });
+  fs.unlinkSync(listPath);
+  const durationSec = await probeDuration(outPath);
+  return { outputPath: outPath, outputFilename: outFilename, durationSec };
+}
+
+/**
  * Stitch clips + narration into a single MP4. Returns the path on disk
  * AND the cache filename so the API route can map it to a public URL.
  */

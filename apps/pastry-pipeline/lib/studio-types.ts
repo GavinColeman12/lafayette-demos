@@ -27,7 +27,10 @@ export type CampaignBrief = {
   audience: "tourists" | "regulars" | "wedding_planners" | "instagrammers" | "concierge";
   goal: string;
   variantCount: number;
-  durationSec: 8 | 16; // Veo 3 = 8s; we can chain two for 16s reels
+  /** Target final video length in seconds. Veo 3 renders 8s per call, so for
+   *  durationSec > 8 we generate ceil(durationSec / 8) shots and ffmpeg-concat
+   *  them. Slider range in the launcher is 7–30s. */
+  durationSec: number;
   aspect: "9:16" | "1:1" | "16:9";
   createdAt: string;
   status: CampaignStatus;

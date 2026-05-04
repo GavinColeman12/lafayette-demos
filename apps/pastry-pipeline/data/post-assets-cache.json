@@ -137,5 +137,51 @@
       "Pain au Chocolat",
       "Lafayette"
     ]
+  },
+  "vid_prm_cmp_mor9kf57_sr5u_01_stitched:carousel": {
+    "slides": [
+      {
+        "url": "/api/studio/video/nb-1777903297431-4buoqt.png",
+        "caption": "Morning perfection on marble"
+      },
+      {
+        "url": "/api/studio/video/nb-1777903306818-mty6f9.png",
+        "caption": "Layers of buttery bliss revealed"
+      },
+      {
+        "url": "/api/studio/video/nb-1777903315846-g04mi4.png",
+        "caption": "Fresh from Lafayette's pastry case"
+      },
+      {
+        "url": "/api/studio/video/nb-1777903326970-uc2gpl.png",
+        "caption": "NoHo streets, French pastry vibes"
+      },
+      {
+        "url": "/api/studio/video/nb-1777903341628-2tedcv.png",
+        "caption": "Almond frangipane perfection up close"
+      }
+    ],
+    "postCaption": "When French technique meets NYC morning magic ✨ @lafayettegrandcafe in NoHo"
+  },
+  "vid_prm_cmp_mor9kf57_sr5u_01_stitched:blog": {
+    "heroImageUrl": "/api/studio/video/nb-1777903435945-3zwp0b.png",
+    "headline": "Lafayette's Almond Croissant Is Worth the NoHo Tourist Scrum",
+    "dek": "The French bakery's signature pastry justifies every elbow thrown in line",
+    "body": [
+      "The queue snaking outside Lafayette at 380 Lafayette Street tells you everything about New York's relationship with French pastry: we'll endure anything for the real deal. This NoHo bakery has cultivated a cult following that borders on religious devotion, and nowhere is that fervor more justified than with their almond croissant.",
+      "What arrives on your plate defies the sad, sugar-dusted imposters found elsewhere in the city. Lafayette's version emerges from the oven with a burnished shell that shatters audibly, releasing an interior perfumed with genuine almond cream—not the cloying paste masquerading as frangipane at lesser establishments. The pastry itself maintains structural integrity while delivering the requisite buttery layers.",
+      "The almond cream strikes an ideal balance between sweet and nutty, avoiding the artificial marzipan notes that plague most New York attempts. Sliced almonds scattered across the top provide textural contrast without overwhelming the delicate crumb beneath. It's a pastry that respects both tradition and the discerning palate.",
+      "Yes, you'll wait. Yes, you'll pay. And yes, you'll find yourself calculating return visits before finishing your first bite. In a city where 'authentic French bakery' has become meaningless marketing speak, Lafayette delivers the genuine article—one perfectly executed almond croissant at a time."
+    ],
+    "pullQuote": "It's a pastry that respects both tradition and the discerning palate.",
+    "tags": [
+      "NoHo",
+      "Bakeries",
+      "French",
+      "Pastries",
+      "Lafayette",
+      "Croissants",
+      "Breakfast"
+    ]
   }
 }

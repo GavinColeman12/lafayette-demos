@@ -68,6 +68,9 @@ export function CampaignLauncher({
   const [hookType, setHookType] = useState("menu_drop");
   const [audience, setAudience] = useState("regulars");
   const [variantCount, setVariantCount] = useState(4);
+  // Final video length — Veo 3 caps a single call at 8s, so beyond 8s the
+  // backend chains ceil(durationSec/8) shots via the multi-shot stitcher.
+  const [durationSec, setDurationSec] = useState<number>(8);
   // Veo 3 only supports 16:9 and 9:16. 1:1 will return when image-mode
   // (Nano Banana stills) ships — Imagen / Nano Banana DOES support square
   // and that's where IG-carousel 1:1 belongs.
@@ -211,6 +214,7 @@ export function CampaignLauncher({
           mediaType,
           slideCount: mediaType === "carousel" ? slideCount : 1,
           scene: scene || undefined,
+          durationSec: mediaType === "video" ? durationSec : undefined,
         }),
       });
       if (!res.ok) {
@@ -355,6 +359,29 @@ export function CampaignLauncher({
           <div className="mt-1 text-[11px] text-muted-foreground">
             Each carousel post will contain {slideCount} sequential slides — first is the hero, then progressively more detail / process / lifestyle.
           </div>
+        </Field>
+      )}
+
+      {mediaType === "video" && (
+        <Field label={`Video length · ${durationSec}s${durationSec > 8 ? `  →  ${Math.ceil(durationSec / 8)} chained Veo shots` : ""}`}>
+          <input
+            type="range"
+            min={7}
+            max={30}
+            value={durationSec}
+            onChange={(e) => setDurationSec(Number(e.target.value))}
+            className="w-full"
+          />
+          <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+            <span>quick showcase</span>
+            <span>{durationSec <= 8 ? "single Veo clip" : `${Math.ceil(durationSec / 8)} shots stitched with ffmpeg`}</span>
+            <span>full process video</span>
+          </div>
+          {durationSec > 8 && (
+            <div className="mt-1 text-[11px] text-amber-300">
+              Multi-shot mode: Claude writes {Math.ceil(durationSec / 8)} continuous shot prompts per variant, Veo renders each, ffmpeg concats. ~{Math.ceil(durationSec / 8)}× the Veo cost (${(Math.ceil(durationSec / 8) * 0.55).toFixed(2)}/variant).
+            </div>
+          )}
         </Field>
       )}
 

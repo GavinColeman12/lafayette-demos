@@ -18,6 +18,7 @@ import {
   stitchCreatorPovSynced,
   ffmpegIsAvailable,
   resolveCachedClipPath,
+  concatClips,
 } from "@/lib/stitcher";
 import type { GeneratedVideo, VeoPrompt } from "@/lib/studio-types";
 
@@ -213,13 +214,49 @@ async function maybeFinalizeCreatorPov(promptId: string): Promise<{ finalized: b
     clipPaths.push(resolveCachedClipPath(clipUrl));
   }
 
+  if (!(await ffmpegIsAvailable())) {
+    return { finalized: false, error: "ffmpeg not installed — cannot stitch" };
+  }
+
+  // ── Visual-only multi-shot path ──
+  // When narration is empty, this is a long-form visual video (e.g. user
+  // dragged the duration slider to 24s). Just ffmpeg-concat the clips with
+  // their native Veo audio — no TTS, no overlay.
+  const isVisualOnly = !prompt.creatorPov.narration || !prompt.creatorPov.narration.trim();
+  if (isVisualOnly) {
+    try {
+      const concat = await concatClips({ clipPaths, outName: `multi-${promptId}.mp4` });
+      const pastry = getPastry(detail.brief.pastrySlug);
+      if (!pastry) return { finalized: false, error: "pastry not found" };
+      const fc = forecastVideo(prompt, pastry);
+      const fname = path.basename(concat.outputPath);
+      const video: GeneratedVideo = {
+        id: `vid_${promptId}_concat`,
+        jobId: shotJobs[0].id,
+        campaignId,
+        promptId,
+        prompt,
+        videoUrl: `/api/studio/video/${fname}`,
+        thumbnailUrl: `/api/studio/video/${fname}#t=0.5`,
+        durationSec: concat.durationSec,
+        aspect: detail.brief.aspect,
+        resolution: `${expectedShots}-shot stitch`,
+        generatedAt: new Date().toISOString(),
+        verdict: "pending",
+        qualityScore: fc.qualityScore,
+        forecast: fc,
+      };
+      await addVideo(video);
+      return { finalized: true };
+    } catch (err: any) {
+      return { finalized: false, error: `concat failed: ${err?.message ?? "ffmpeg error"}` };
+    }
+  }
+
   // Synthesize the narration. If ElevenLabs isn't configured, we still ship
   // the unstitched first clip rather than failing the whole campaign.
   if (!elevenIsConfigured()) {
     return { finalized: false, error: "ELEVENLABS_API_KEY missing — cannot finalize creator-POV" };
-  }
-  if (!(await ffmpegIsAvailable())) {
-    return { finalized: false, error: "ffmpeg not installed — cannot stitch" };
   }
 
   // ── AUDIO-FIRST: synthesize narration WITH timestamps, then map each

@@ -106,11 +106,22 @@ export async function POST(req: NextRequest) {
 
   let prompts: VeoPrompt[];
   if (vibe === "creator_pov" || (selectedBucket && isNarratedBucket)) {
-    prompts = await generateCreatorPovPrompts(id, pastry, goal, aspect, safeCount, styleId, bucketId, clientId);
+    prompts = await generateCreatorPovPrompts(id, pastry, enrichedGoal, aspect, safeCount, styleId, bucketId, clientId);
   } else {
     // Visual-only path — pipe the bucket brief into the standard generator
     // so ASMR / menu drops / kitchen montages get bucket-shaped prompts.
     prompts = await generatePromptsForCampaign(brief, pastry, { bucketId, clientId });
+
+    // Multi-shot stitching: if the user picked a duration > 8s, expand each
+    // single-clip prompt into N=ceil(durationSec/8) continuous shot prompts
+    // (no narration). The job-firing logic below already branches on
+    // creatorPov.shots.length > 0 to fire one Veo job per shot, and the
+    // finalize step concats them into one continuous video.
+    const totalSec = Number(durationSec) || 8;
+    if (totalSec > 8) {
+      const shotsPerVariant = Math.min(4, Math.ceil(totalSec / 8)); // hard cap 4 shots = 32s
+      prompts = await expandPromptsToMultiShot(prompts, pastry, totalSec, shotsPerVariant);
+    }
   }
   await createCampaign(brief, prompts);
 
@@ -237,6 +248,64 @@ async function generateCreatorPovPrompts(
     });
   });
   return prompts;
+}
+
+/**
+ * Multi-shot stitch — expand each single-clip prompt into N continuous shot
+ * prompts (no narration). The shots progress through the same scene like
+ * a process video: opening reveal → closer detail → pour/cut/finish → final
+ * beauty shot. ffmpeg concat at finalize time produces one continuous video.
+ */
+async function expandPromptsToMultiShot(
+  prompts: VeoPrompt[],
+  pastry: any,
+  totalSec: number,
+  shotsPerVariant: number,
+): Promise<VeoPrompt[]> {
+  const out: VeoPrompt[] = [];
+  await Promise.all(
+    prompts.map(async (p) => {
+      try {
+        const msg = await anthropic().messages.create({
+          model: SONNET,
+          max_tokens: 1200,
+          temperature: 0.8,
+          system: `You break a single-clip video brief into ${shotsPerVariant} continuous 8-second shot prompts that flow head-to-tail like a process video. Each shot is its own Veo prompt — full sentence, camera move, lighting, surface detail. The shots together tell ONE scene story over ${totalSec}s. No narration, no on-screen text, no logos. Keep continuity (lighting, surface, props) consistent across shots. Output ONLY a JSON array of ${shotsPerVariant} strings.`,
+          messages: [{
+            role: "user",
+            content: `Pastry: ${pastry.name}\nBase brief: ${p.prompt}\n\nReturn JSON array of ${shotsPerVariant} 8-second shot prompts that flow continuously.`,
+          }],
+        });
+        const text = msg.content
+          .filter((b): b is { type: "text"; text: string } => b.type === "text")
+          .map((b) => b.text).join("");
+        const shots: string[] = safeJson(text, []);
+        if (!Array.isArray(shots) || shots.length === 0) {
+          out.push(p);
+          return;
+        }
+        out.push({
+          ...p,
+          styleTag: `${p.styleTag} · ${shots.length} shots / ${totalSec}s`,
+          creatorPov: {
+            narration: "",         // empty narration → finalize uses concat-only path
+            hookLine: "",
+            totalSeconds: totalSec,
+            shots: shots.slice(0, shotsPerVariant).map((sp, idx) => ({
+              index: idx,
+              narrationPhrase: "",
+              startSec: idx * 8,
+              endSec: (idx + 1) * 8,
+              prompt: typeof sp === "string" ? sp : String(sp),
+            })),
+          },
+        });
+      } catch {
+        out.push(p); // graceful: keep the single-clip version if expansion fails
+      }
+    }),
+  );
+  return out;
 }
 
 /**
