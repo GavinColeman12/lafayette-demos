@@ -11,6 +11,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // `server-only` is a Next.js compile-time guard with no Node resolution.
+      // Stub it to an empty module so server-side files can be imported in Vitest.
+      "server-only": path.resolve(__dirname, "__tests__/stubs/server-only.ts"),
     },
   },
 });
