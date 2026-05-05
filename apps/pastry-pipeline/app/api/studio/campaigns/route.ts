@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
               campaignId: id,
               promptId: p.id,
               status: "failed",
-              provider: veoActiveProvider(),
+              provider: videoProvider.name,
               error: err?.message ?? "start failed",
             });
           }
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
           campaignId: id,
           promptId: p.id,
           status: "failed",
-          provider: veoActiveProvider(),
+          provider: videoProvider.name,
           error: err?.message ?? "start failed",
         });
       }
@@ -212,7 +212,9 @@ export async function POST(req: NextRequest) {
     id,
     jobsStarted: jobs.length,
     veoConfigured: veoIsConfigured(),
-    provider: veoActiveProvider(),
+    // Per-campaign provider (the one we actually routed to), not the
+    // system-default. Diagnostics still see the right thing.
+    provider: videoProvider.name,
   });
 }
 
