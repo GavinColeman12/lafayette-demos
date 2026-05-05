@@ -57,6 +57,11 @@ export type CampaignBrief = {
   mediaType?: "video" | "image" | "carousel";
   /** When mediaType === "carousel": how many slides per variant (2–10). */
   slideCount?: number;
+  /**
+   * Which video provider to use for this campaign. When absent, server
+   * uses defaultProvider() based on duration / mediaType.
+   */
+  provider?: "veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast" | "runway_aleph" | "mock";
 };
 
 /**
@@ -121,7 +126,7 @@ export type VideoJob = {
   campaignId: string;
   promptId: string;
   status: JobStatus;
-  provider: "veo3" | "veo3_fast" | "mock";
+  provider: "veo3" | "veo3_fast" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast" | "runway_aleph" | "mock";
   externalJobId?: string;
   startedAt?: string;
   completedAt?: string;
