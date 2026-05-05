@@ -11,7 +11,8 @@ describe("provider registry", () => {
   });
 
   it("getProvider falls back to mock for unknown names", () => {
-    // @ts-expect-error testing invalid name
+    // getProvider's signature accepts `string` for runtime safety, so
+    // passing an invalid name doesn't need a @ts-expect-error directive.
     const p = getProvider("not_a_real_provider");
     expect(p.name).toBe("mock");
   });
