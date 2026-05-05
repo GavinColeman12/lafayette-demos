@@ -7,7 +7,7 @@ import {
   updateCampaign,
   updateJob,
 } from "@/lib/studio-store";
-import { pollVeoGeneration } from "@/lib/veo";
+import { getProvider } from "@/lib/video-providers/registry";
 import { getPastry } from "@/lib/data";
 import { forecastVideo } from "@/lib/forecast";
 import {
@@ -59,10 +59,11 @@ export async function POST(req: NextRequest) {
         if (job.status === "queued") {
           await updateJob(job.id, { status: "running" });
         }
-        const result = await pollVeoGeneration(job.externalJobId || "");
-        if (!result.done) return;
+        const provider = getProvider(job.provider as any);
+        const result = await provider.pollGeneration(job.externalJobId || "");
+        if (result.status !== "succeeded" && result.status !== "failed") return;
 
-        if (result.error || !result.videoUrl) {
+        if (result.status === "failed") {
           await updateJob(job.id, {
             status: "failed",
             error: result.error || "no video url",
@@ -102,10 +103,10 @@ export async function POST(req: NextRequest) {
             promptId: job.promptId,
             prompt,
             videoUrl: result.videoUrl,
-            thumbnailUrl: result.thumbnailUrl || result.videoUrl,
-            durationSec: result.durationSec || 8,
+            thumbnailUrl: `${result.videoUrl}#t=0.5`,
+            durationSec: result.metadata?.durationSec || 8,
             aspect: detail.brief.aspect,
-            resolution: result.resolution || "1080p",
+            resolution: result.metadata?.resolution || "1080p",
             generatedAt: new Date().toISOString(),
             verdict: "pending",
             qualityScore: fc.qualityScore,
