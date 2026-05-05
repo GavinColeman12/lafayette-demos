@@ -26,12 +26,16 @@ export const mockProvider: VideoProvider = {
     return { taskId, provider: "mock" };
   },
   async pollGeneration(taskId: string): Promise<VideoPollResult> {
-    if (!taskId.startsWith("mock:")) return { status: "failed", error: "not a mock taskId" };
+    if (!taskId.startsWith("mock:")) return { status: "failed", error: `invalid taskId: ${taskId} is not a mock taskId` };
     const idx = parseInt(taskId.split("_")[0].replace("mock:", ""), 10) % STOCK_CLIPS.length;
+    // taskId format: "mock:HASH_<dur>s" — recover the requested duration so
+    // metadata.durationSec actually reflects what the caller asked for.
+    const durMatch = taskId.match(/_(\d+)s$/);
+    const durationSec = durMatch ? parseInt(durMatch[1], 10) : 8;
     return {
       status: "succeeded",
       videoUrl: STOCK_CLIPS[idx],
-      metadata: { resolution: "720x1280 mock", durationSec: 8 },
+      metadata: { resolution: "720x1280 mock", durationSec },
     };
   },
 };
