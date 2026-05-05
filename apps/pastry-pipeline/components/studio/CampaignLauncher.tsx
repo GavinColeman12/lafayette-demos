@@ -149,7 +149,14 @@ export function CampaignLauncher({
     cloned: Array<{ voiceId: string; name: string; inspiredBy?: string }>;
     styles: Array<{ id: string; name: string; handle: string }>;
   } | null>(null);
-  const [provider, setProvider] = useState<"veo3" | "veo3_fast" | "mock">("mock");
+  // serverProvider = the active provider on the server (from GET /campaigns).
+  // Drives the DEMO MODE / REAL VEO banner + the mock short-circuit in
+  // confirmRealVeoSpend. Distinct from the user-chosen `provider` below.
+  const [serverProvider, setServerProvider] = useState<"veo3" | "veo3_fast" | "mock">("mock");
+
+  // Video provider — runway_gen4_turbo is the demo-friendly default; users
+  // can pick veo3 or runway_gen4 (higher fidelity) in the Advanced disclosure.
+  const [provider, setProvider] = useState<"veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast">("runway_gen4_turbo");
 
   useEffect(() => {
     fetch("/api/studio/voices")
@@ -162,7 +169,7 @@ export function CampaignLauncher({
       .catch(() => {});
     fetch("/api/studio/campaigns")
       .then((r) => r.json())
-      .then((j) => setProvider(j.provider || "mock"))
+      .then((j) => setServerProvider(j.provider || "mock"))
       .catch(() => {});
   }, []);
 
@@ -174,13 +181,22 @@ export function CampaignLauncher({
    * Returns true if the user confirmed (or no confirmation needed).
    */
   function confirmRealVeoSpend(count: number): boolean {
-    if (provider === "mock") return true;
-    const perClip = 0.55;
+    // serverProvider === "mock" means STUDIO_DEMO_MODE=1 — no real spend, no prompt.
+    if (serverProvider === "mock") return true;
+    const perClip =
+      provider === "runway_gen4_turbo" ? 0.20
+      : provider === "runway_gen4" ? 0.40
+      : provider === "runway_veo3.1_fast" ? 0.32
+      : 0.55; // veo3
     // Each creator-POV variant = 3 Veo jobs. Visual-only buckets = 1.
     const isPov = vibe === "creator_pov" || (bucketId && bucketId !== "asmr" && bucketId !== "menu_drop" && bucketId !== "kitchen_montage" && bucketId !== "transformation" && bucketId !== "limited_drop" && bucketId !== "event_announce" && bucketId !== "would_you_eat");
     const totalClips = isPov ? count * 3 : count;
     const totalCost = totalClips * perClip;
-    const providerLabel = provider === "veo3" ? "Vertex AI Veo 3" : "Gemini Veo 3 Fast";
+    const providerLabel =
+      provider === "runway_gen4_turbo" ? "Runway Gen-4 Turbo"
+      : provider === "runway_gen4" ? "Runway Gen-4"
+      : provider === "runway_veo3.1_fast" ? "Runway Veo 3.1 Fast"
+      : "Vertex AI Veo 3";
     const msg =
       `About to render ${totalClips} clip${totalClips === 1 ? "" : "s"} via ${providerLabel}.\n\n` +
       `Estimated cost: $${totalCost.toFixed(2)} (~$${perClip}/clip)\n` +
@@ -215,6 +231,7 @@ export function CampaignLauncher({
           slideCount: mediaType === "carousel" ? slideCount : 1,
           scene: scene || undefined,
           durationSec: mediaType === "video" ? durationSec : undefined,
+          provider: mediaType === "video" ? provider : undefined,
         }),
       });
       if (!res.ok) {
@@ -270,21 +287,21 @@ export function CampaignLauncher({
           rendering for a sales call or final. */}
       <div className={cn(
         "flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-[12px]",
-        provider === "mock"
+        serverProvider === "mock"
           ? "border-warning/40 bg-warning/10 text-warning"
           : "border-destructive/40 bg-destructive/10 text-destructive"
       )}>
         <span className="font-semibold">
-          {provider === "mock" ? "DEMO MODE" : provider === "veo3" ? "REAL VEO · Vertex AI" : "REAL VEO · Gemini Free"}
+          {serverProvider === "mock" ? "DEMO MODE" : serverProvider === "veo3" ? "REAL VEO · Vertex AI" : "REAL VEO · Gemini Free"}
         </span>
         <span className="opacity-80">·</span>
         <span className="opacity-90">
-          {provider === "mock"
+          {serverProvider === "mock"
             ? "no real video generation, $0 spend — safe for iteration"
             : "real Veo will render — you'll pay per clip"}
         </span>
         <span className="ml-auto opacity-70 font-mono text-[10px]">
-          {provider === "mock"
+          {serverProvider === "mock"
             ? "STUDIO_DEMO_MODE=1 to keep on, =0 for real"
             : "set STUDIO_DEMO_MODE=1 in .env.local to revert"}
         </span>
@@ -383,6 +400,28 @@ export function CampaignLauncher({
             </div>
           )}
         </Field>
+      )}
+
+      {mediaType === "video" && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+            Advanced · provider, model
+          </summary>
+          <div className="mt-2 grid gap-2">
+            <Field label="Video provider">
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as any)}
+                className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-sm"
+              >
+                <option value="runway_gen4_turbo">Runway Gen-4 Turbo · ~$0.025/sec · fastest</option>
+                <option value="runway_gen4">Runway Gen-4 · ~$0.05/sec · highest fidelity</option>
+                <option value="runway_veo3.1_fast">Runway Veo 3.1 Fast · ~$0.04/sec</option>
+                <option value="veo3">Veo 3 (direct Vertex) · ~$0.50/clip</option>
+              </select>
+            </Field>
+          </div>
+        </details>
       )}
 
       {/* Scene direction — Veo benefits from long, detailed prompts. Type a
