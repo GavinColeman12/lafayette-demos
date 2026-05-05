@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addImages, addJobs, createCampaign, listCampaigns, updateCampaign } from "@/lib/studio-store";
 import { generatePromptsForCampaign } from "@/lib/prompt-engine";
-import { startVeoGeneration, veoIsConfigured, veoActiveProvider } from "@/lib/veo";
+import { veoIsConfigured, veoActiveProvider } from "@/lib/veo";
+import { getProvider, defaultProvider } from "@/lib/video-providers/registry";
 import { generateCreatorPovScript } from "@/lib/creator-pov";
 import { generateImage, nanoBananaIsConfigured } from "@/lib/nanobanana";
 import { anthropic, safeJson, SONNET } from "@/lib/anthropic";
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     mediaType = "video",
     slideCount = 1,
     scene = "",
+    provider: requestedProvider,
   } = body ?? {};
 
   // Scene direction: a long-form creative seed from the user (camera moves,
@@ -66,6 +68,14 @@ export async function POST(req: NextRequest) {
     : safeMediaType === "image" ? 1
     : 1;
   const id = `cmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+  // Resolve the video provider for this campaign. Falls back automatically:
+  //   1. Explicit body.provider → that one (or mock if unconfigured)
+  //   2. defaultProvider() based on duration + mediaType
+  const videoProvider = requestedProvider
+    ? getProvider(requestedProvider as any)
+    : defaultProvider({ mediaType: safeMediaType, durationSec: Number(durationSec) });
+
   const brief: CampaignBrief = {
     id,
     pastrySlug,
@@ -86,6 +96,7 @@ export async function POST(req: NextRequest) {
     clientId,
     mediaType: safeMediaType,
     slideCount: safeSlideCount,
+    provider: videoProvider.name as CampaignBrief["provider"],
   };
 
   // ── Image / carousel campaigns: skip Veo entirely, fan out Nano Banana ──
@@ -136,9 +147,9 @@ export async function POST(req: NextRequest) {
         const jobId = `job_${id}_${String(i + 1).padStart(2, "0")}_s${shot.index + 1}`;
         startTasks.push((async () => {
           try {
-            const start = await startVeoGeneration({
+            const start = await videoProvider.startGeneration({
               prompt: shot.prompt,
-              aspectRatio: aspect,
+              aspect: aspect as any,
               durationSec: 8,
             });
             jobs.push({
@@ -146,8 +157,8 @@ export async function POST(req: NextRequest) {
               campaignId: id,
               promptId: p.id,
               status: "queued",
-              provider: start.provider,
-              externalJobId: start.operationName,
+              provider: videoProvider.name,
+              externalJobId: start.taskId,
               startedAt: new Date().toISOString(),
             });
           } catch (err: any) {
@@ -167,9 +178,9 @@ export async function POST(req: NextRequest) {
     const jobId = `job_${id}_${String(i + 1).padStart(2, "0")}`;
     startTasks.push((async () => {
       try {
-        const start = await startVeoGeneration({
+        const start = await videoProvider.startGeneration({
           prompt: p.prompt,
-          aspectRatio: aspect,
+          aspect: aspect as any,
           durationSec: 8,
         });
         jobs.push({
@@ -177,8 +188,8 @@ export async function POST(req: NextRequest) {
           campaignId: id,
           promptId: p.id,
           status: "queued",
-          provider: start.provider,
-          externalJobId: start.operationName,
+          provider: videoProvider.name,
+          externalJobId: start.taskId,
           startedAt: new Date().toISOString(),
         });
       } catch (err: any) {
