@@ -7,6 +7,9 @@ import { generateCreatorPovScript } from "@/lib/creator-pov";
 import { generateImage, nanoBananaIsConfigured } from "@/lib/nanobanana";
 import { anthropic, safeJson, SONNET } from "@/lib/anthropic";
 import { getBrandBrain } from "@/lib/brand-brain";
+import { generateBeatSheet, BeatSheetGenerationError } from "@/lib/narrative-arc";
+import { selectAssetForBeat } from "@/lib/brand-assets/select";
+import { readIndex as readAssetIndex } from "@/lib/brand-assets/index";
 import { defaultHashtagsFor } from "@/lib/hashtags";
 import { getBucket } from "@/lib/content-buckets";
 import { getPastry } from "@/lib/data";
@@ -131,7 +134,15 @@ export async function POST(req: NextRequest) {
     const totalSec = Number(durationSec) || 8;
     if (totalSec > 8) {
       const shotsPerVariant = Math.min(4, Math.ceil(totalSec / 8)); // hard cap 4 shots = 32s
-      prompts = await expandPromptsToMultiShot(prompts, pastry, totalSec, shotsPerVariant);
+      prompts = await expandPromptsToBeatSheet({
+        prompts,
+        pastry,
+        totalSec,
+        shotsPerVariant,
+        bucketId: bucketId ?? "menu_drop",
+        sceneSeed: scene ?? "",
+        clientId,
+      });
     }
   }
   await createCampaign(brief, prompts);
@@ -269,55 +280,93 @@ async function generateCreatorPovPrompts(
  * a process video: opening reveal → closer detail → pour/cut/finish → final
  * beauty shot. ffmpeg concat at finalize time produces one continuous video.
  */
-async function expandPromptsToMultiShot(
-  prompts: VeoPrompt[],
-  pastry: any,
-  totalSec: number,
-  shotsPerVariant: number,
-): Promise<VeoPrompt[]> {
+/**
+ * Beat-sheet driven multi-shot expansion. Replaces the legacy
+ * expandPromptsToMultiShot which just asked Claude for "N continuous prompts."
+ * The narrative engine now generates a STRUCTURED beat sheet (hook → build →
+ * reveal → payoff per the bucket's intent) and the asset selector picks a
+ * brand-relevant seed image per beat.
+ */
+async function expandPromptsToBeatSheet(input: {
+  prompts: VeoPrompt[];
+  pastry: any;
+  totalSec: number;
+  shotsPerVariant: number;
+  bucketId: string;
+  sceneSeed: string;
+  clientId?: string;
+}): Promise<VeoPrompt[]> {
+  const bucket = getBucket(input.bucketId);
+  const brain = input.clientId ? getBrandBrain(input.clientId) : null;
+  const assetIndex = input.clientId
+    ? await readAssetIndex(input.clientId).catch(() => null)
+    : null;
   const out: VeoPrompt[] = [];
-  await Promise.all(
-    prompts.map(async (p) => {
-      try {
-        const msg = await anthropic().messages.create({
-          model: SONNET,
-          max_tokens: 1200,
-          temperature: 0.8,
-          system: `You break a single-clip video brief into ${shotsPerVariant} continuous 8-second shot prompts that flow head-to-tail like a process video. Each shot is its own Veo prompt — full sentence, camera move, lighting, surface detail. The shots together tell ONE scene story over ${totalSec}s. No narration, no on-screen text, no logos. Keep continuity (lighting, surface, props) consistent across shots. Output ONLY a JSON array of ${shotsPerVariant} strings.`,
-          messages: [{
-            role: "user",
-            content: `Pastry: ${pastry.name}\nBase brief: ${p.prompt}\n\nReturn JSON array of ${shotsPerVariant} 8-second shot prompts that flow continuously.`,
-          }],
-        });
-        const text = msg.content
-          .filter((b): b is { type: "text"; text: string } => b.type === "text")
-          .map((b) => b.text).join("");
-        const shots: string[] = safeJson(text, []);
-        if (!Array.isArray(shots) || shots.length === 0) {
-          out.push(p);
-          return;
+
+  await Promise.all(input.prompts.map(async (p) => {
+    try {
+      const beatSheet = await generateBeatSheet({
+        brandContext: brain?.systemPrefix ?? input.pastry?.name ?? "",
+        vertical: brain?.vertical ?? "food",
+        bucketId: input.bucketId,
+        bucketBrief: bucket?.systemBrief ?? bucket?.blurb ?? "",
+        sceneSeed: input.sceneSeed || p.prompt,
+        durationSec: input.totalSec,
+        shotCount: input.shotsPerVariant,
+        subjectName: input.pastry?.name,
+      });
+
+      // Per-beat asset selection. Each beat may resolve to:
+      //   pinned > auto > frame_continuation > text_only
+      // Frame continuation requires the previous shot's last frame, which
+      // isn't available until the poller has rendered shot N — so for now,
+      // auto + pin + text_only are the active branches at launch time;
+      // frame_continuation is wired in Phase 5 (extractLastFrame helper).
+      const shots: any[] = [];
+      for (let i = 0; i < beatSheet.beats.length; i++) {
+        const b = beatSheet.beats[i];
+        let seedImageUrl: string | undefined = undefined;
+        if (assetIndex) {
+          const sel = await selectAssetForBeat({
+            query: b.seedAssetQuery,
+            library: assetIndex.assets,
+            pinnedId: undefined,             // first-N pinning happens upstream in Phase 5
+            previousShotLastFrameUrl: undefined,
+            fromShotIndex: i - 1,
+          });
+          if (sel.kind === "auto" || sel.kind === "pinned") {
+            seedImageUrl = sel.asset.publicUrl;
+          }
         }
-        out.push({
-          ...p,
-          styleTag: `${p.styleTag} · ${shots.length} shots / ${totalSec}s`,
-          creatorPov: {
-            narration: "",         // empty narration → finalize uses concat-only path
-            hookLine: "",
-            totalSeconds: totalSec,
-            shots: shots.slice(0, shotsPerVariant).map((sp, idx) => ({
-              index: idx,
-              narrationPhrase: "",
-              startSec: idx * 8,
-              endSec: (idx + 1) * 8,
-              prompt: typeof sp === "string" ? sp : String(sp),
-            })),
-          },
+        shots.push({
+          index: i,
+          narrationPhrase: "",
+          startSec: (b.pctStart * input.totalSec) / 100,
+          endSec: (b.pctEnd * input.totalSec) / 100,
+          prompt: b.shotPrompt,
+          seedImageUrl,
         });
-      } catch {
-        out.push(p); // graceful: keep the single-clip version if expansion fails
       }
-    }),
-  );
+
+      out.push({
+        ...p,
+        styleTag: `${beatSheet.arcName} · ${beatSheet.beats.length} beats / ${input.totalSec}s`,
+        creatorPov: {
+          narration: "",        // empty narration → poller uses concat-only path
+          hookLine: "",
+          totalSeconds: input.totalSec,
+          shots,
+        },
+      });
+    } catch (err) {
+      // Beat-sheet generation failed (3 retries exhausted). Fall back to the
+      // single-clip prompt rather than failing the entire campaign.
+      if (err instanceof BeatSheetGenerationError) {
+        console.error(`[narrative-arc] beat sheet failed for ${p.id}: ${err.message}`);
+      }
+      out.push(p);
+    }
+  }));
   return out;
 }
 
