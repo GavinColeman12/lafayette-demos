@@ -27,6 +27,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing videoId or campaignId" }, { status: 400 });
   }
 
+  // ── License-safety guard (Phase 5) ──────────────────────────────
+  // If the publish target is a composed carousel that contains any
+  // Google-CSE-sourced asset, refuse the publish. Those images are
+  // licensed for AI-seed reference only, never for direct publishing.
+  try {
+    const { readIndex: readAssetIndex } = await import("@/lib/brand-assets/index");
+    const camp = await getCampaignDetail(campaignId);
+    const carousel = camp?.composedCarousels?.find((c: any) => c.id === videoId);
+    if (carousel?.slideImageIds?.length && camp?.brief?.clientId) {
+      const idx = await readAssetIndex(camp.brief.clientId);
+      const violating = carousel.slideImageIds.filter((id: string) =>
+        idx.assets.find((a) => a.id === id)?.licenseTag === "google_image_reference_only"
+      );
+      if (violating.length > 0) {
+        return NextResponse.json({
+          error: "license_violation",
+          message: `Cannot publish: ${violating.length} slide(s) use google_image_reference_only assets, which are reference-only for AI seeding and not cleared for publishing.`,
+          violatingAssetIds: violating,
+        }, { status: 422 });
+      }
+    }
+  } catch {
+    // Guard is defensive — if the asset index read errors, fall through.
+  }
+
   const detail = await getCampaignDetail(campaignId);
   if (!detail) return NextResponse.json({ error: "campaign not found" }, { status: 404 });
 
