@@ -40,10 +40,22 @@ export async function POST(req: NextRequest) {
   ].filter(Boolean).join("\n");
 
   const enrich = mediaType === "video"
-    ? `For VIDEO, include: camera (lens, move — slow dolly / handheld / static / push-in / orbit), lighting (direction, quality, time of day), surface detail (texture, motion), color grade, ambient sound (one or two specific cues), mood. Veo 3 renders better with specific, sensory details.`
-    : `For STILLS, include: composition (flatlay / 3/4 / macro / overhead), lighting (direction, quality), props (real objects, no text), color story, surface/texture detail, mood. Photorealistic editorial-food-photography style.`;
+    ? `For VIDEO: name ONE camera idea (e.g. "slow push-in" OR "handheld" — pick one, don't enumerate options), ONE lighting feel ("morning light through windows", "warm tungsten", etc.), ONE sensory anchor (steam, butter sheen, hands moving), and the mood in 2-3 words. That's it. The model fills in the rest.`
+    : `For STILLS: name ONE composition (flatlay / 3-quarter / macro), ONE lighting feel, ONE color word, and the mood. Brief, anchoring details only.`;
 
-  const system = `You are a director-of-photography for a bakery's content. Take a short creative seed from the user and rewrite it into a 4-6 sentence scene brief that a Veo or Nano Banana model can render directly. ${enrich} Keep the user's original intent and any specific details they named. No buzzwords ("cinematic," "stunning," "magical"). Concrete, sensory, specific.`;
+  const system = `You are a creative director writing brief scene anchors for a generative-video model. The model renders better with ROOM to interpret — over-specific prompts produce stiff, locked output. Your job is to give 2-3 strong creative anchors and leave the rest to the model.
+
+Output format: 2-3 sentences. Total: 40-80 words. NOT a paragraph. NOT a storyboard. NOT a shot list. Concrete sensory details (texture, light, motion) but only ONE per category. No buzzwords ("cinematic", "stunning", "magical", "mesmerizing"). No emoji. No section headers. ${enrich}
+
+Examples of GOOD scene briefs (note the brevity + room to breathe):
+- "Macro on butter glistening between croissant layers. Soft window light, late morning. Steam ribbons rising. Quiet, hungry."
+- "Hands flouring a marble counter, slow and unhurried. Tungsten warm. Single shaft of daylight crosses the bench. Documentary."
+- "Top-down on a finished plate landing on white linen. Forks, half a glass of wine just out of frame. Golden hour. Inviting, unhurried."
+
+Examples of BAD scene briefs (avoid this — too prescriptive):
+- "Static wide shot captures baker's weathered hands layering thin almond paste across golden croissant dough on a flour-dusted marble counter, morning sunlight streaming through tall windows casting sharp shadows that reveal every crease..."
+
+Take the user's seed and write 2-3 anchor sentences in the GOOD style.`;
 
   const seedPart = seed.trim()
     ? `User's creative seed (preserve their intent, add cinematic detail):\n"${seed.trim()}"`
@@ -53,12 +65,12 @@ export async function POST(req: NextRequest) {
     ? `\n\nAvoid repeating the angle of these prior expansions:\n${previous.slice(-3).map((p: string) => `- ${p.slice(0, 120)}…`).join("\n")}`
     : "";
 
-  const prompt = `${seedPart}\n\nSelections:\n${ctx}${avoid}\n\nReturn ONLY the expanded scene brief — one paragraph, 4-6 sentences, no headers, no quotes around it.`;
+  const prompt = `${seedPart}\n\nSelections:\n${ctx}${avoid}\n\nReturn ONLY 2-3 anchor sentences (40-80 words). No headers. No quotes. No extra commentary.`;
 
   try {
     const msg = await anthropic().messages.create({
       model: SONNET,
-      max_tokens: 600,
+      max_tokens: 250,    // hard cap to discourage paragraph-length output
       temperature: 0.85,
       system,
       messages: [{ role: "user", content: prompt }],

@@ -225,6 +225,36 @@ async function maybeFinalizeCreatorPov(promptId: string): Promise<{ finalized: b
   // their native Veo audio — no TTS, no overlay.
   const isVisualOnly = !prompt.creatorPov.narration || !prompt.creatorPov.narration.trim();
   if (isVisualOnly) {
+    // Demo-mode short-circuit: when the underlying clips are mock URLs
+    // (e.g. /demo-assets/...), they live in the public/ folder, not in the
+    // Veo cache. ffmpeg-concat would fail looking for them in data/veo-cache/.
+    // Instead, promote the first mock clip as the variant's final video so
+    // the swiper has something to display.
+    const firstClipUrl = (succeededShots[0] as any).clipUrl as string | undefined;
+    const isMockClip = !!firstClipUrl && firstClipUrl.startsWith("/demo-assets/");
+    if (isMockClip) {
+      const pastry = getPastry(detail.brief.pastrySlug);
+      if (!pastry) return { finalized: false, error: "pastry not found" };
+      const fc = forecastVideo(prompt, pastry);
+      const video: GeneratedVideo = {
+        id: `vid_${promptId}_mock`,
+        jobId: shotJobs[0].id,
+        campaignId,
+        promptId,
+        prompt,
+        videoUrl: firstClipUrl,
+        thumbnailUrl: `${firstClipUrl}#t=0.5`,
+        durationSec: prompt.creatorPov.totalSeconds || 8,
+        aspect: detail.brief.aspect,
+        resolution: `mock · ${expectedShots} shots (demo mode)`,
+        generatedAt: new Date().toISOString(),
+        verdict: "pending",
+        qualityScore: fc.qualityScore,
+        forecast: fc,
+      };
+      await addVideo(video);
+      return { finalized: true };
+    }
     try {
       const concat = await concatClips({ clipPaths, outName: `multi-${promptId}.mp4` });
       const pastry = getPastry(detail.brief.pastrySlug);
