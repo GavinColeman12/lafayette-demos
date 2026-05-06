@@ -87,7 +87,7 @@ export async function generateBeatSheet(input: BeatSheetInput): Promise<BeatShee
     const raw = await callClaudeForBeatSheet(input);
     const parsed = BeatSheetSchema.safeParse(raw);
     if (parsed.success) return parsed.data;
-    failures.push(parsed.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; "));
+    failures.push(parsed.error.issues.map((e: any) => `${e.path.join(".")}: ${e.message}`).join("; "));
   }
   throw new BeatSheetGenerationError(`beat sheet validation failed after 3 attempts: ${failures.join(" | ")}`);
 }
