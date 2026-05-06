@@ -6,6 +6,7 @@ import { CONTENT_BUCKETS, FAMILIES, type ContentBucket } from "@/lib/content-buc
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { PinnedAssetsPanel } from "./PinnedAssetsPanel";
 
 type PastryRef = { slug: string; name: string; emoji: string; isHero: boolean };
 
@@ -158,6 +159,10 @@ export function CampaignLauncher({
   // can pick veo3 or runway_gen4 (higher fidelity) in the Advanced disclosure.
   const [provider, setProvider] = useState<"veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast">("runway_gen4_turbo");
 
+  // Pinned brand-asset IDs (from PinnedAssetsPanel). Sent to the campaigns
+  // API so the per-beat selector binds them to specific shots.
+  const [pinnedAssetIds, setPinnedAssetIds] = useState<string[]>([]);
+
   useEffect(() => {
     fetch("/api/studio/voices")
       .then((r) => r.json())
@@ -232,6 +237,7 @@ export function CampaignLauncher({
           scene: scene || undefined,
           durationSec: mediaType === "video" ? durationSec : undefined,
           provider: mediaType === "video" ? provider : undefined,
+          pinnedAssetIds: pinnedAssetIds.length > 0 ? pinnedAssetIds : undefined,
         }),
       });
       if (!res.ok) {
@@ -457,6 +463,14 @@ export function CampaignLauncher({
           </button>
         </div>
       </Field>
+
+      {clientId && (
+        <PinnedAssetsPanel
+          brainId={clientId}
+          pinnedIds={pinnedAssetIds}
+          onChange={setPinnedAssetIds}
+        />
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Field label="Pastry">
