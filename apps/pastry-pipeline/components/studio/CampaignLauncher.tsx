@@ -102,6 +102,7 @@ export function CampaignLauncher({
         body: JSON.stringify({
           seed: scene,
           pastrySlug, vibe, hookType, audience, bucketId, mediaType,
+          durationSec: mediaType === "video" ? durationSec : undefined,
           previous: priorScenes.slice(-3),
         }),
       });
