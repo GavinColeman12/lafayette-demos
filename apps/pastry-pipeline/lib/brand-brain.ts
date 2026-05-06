@@ -81,6 +81,13 @@ export type BrandBrain = {
    * Computed from the rest of the brain at storage time.
    */
   systemPrefix: string;
+
+  /** Pre-set vertical (food, retail, services, real-estate, saas, fitness, hospitality, weddings, education, healthcare, other). Drives bucket filtering + narrative engine. */
+  vertical?: string;
+  /** Per-brain override for asset-match threshold (default 0.65). */
+  assetMatchThreshold?: number;
+  /** Saved beat sheets for re-use ("save this beat sheet as a template"). Phase 5. */
+  savedBeatSheets?: Array<{ id: string; arcName: string; beats: any[]; savedAt: string }>;
 };
 
 const BRAINS_DIR = path.join(process.cwd(), "data", "brand-brains");

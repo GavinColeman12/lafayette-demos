@@ -62,6 +62,9 @@ export type CampaignBrief = {
    * uses defaultProvider() based on duration / mediaType.
    */
   provider?: "veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast" | "runway_aleph" | "mock";
+  /** Asset IDs the user pinned in the launcher's reference photos panel.
+   *  Bind to specific beats by order (or first-N in current Phase 2 wiring). */
+  pinnedAssetIds?: string[];
 };
 
 /**
