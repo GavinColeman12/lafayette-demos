@@ -30,14 +30,24 @@ export async function POST(req: NextRequest) {
   const pastry = pastrySlug ? getPastry(pastrySlug) : undefined;
   const bucket = bucketId ? getBucket(bucketId) : undefined;
 
+  // Bucket-aware narrative shape. Each bucket has a systemBrief describing
+  // its arc (process / hook+reveal / sensory / before-after / etc). Inject
+  // it so the scene anchor matches the format intent — a kitchen_montage
+  // gets ingredient-prep-bake-finish anchors, a menu_drop gets the
+  // hook-tease pattern, etc.
+  const bucketShape = bucket?.systemBrief
+    ? `Format intent (the kind of story this format tells):\n${bucket.systemBrief.slice(0, 500)}`
+    : null;
+
   const ctx = [
     pastry ? `Pastry: ${pastry.name}` : null,
     vibe ? `Vibe: ${vibe}` : null,
     hookType ? `Hook: ${hookType}` : null,
     audience ? `Audience: ${audience}` : null,
     bucket ? `Format: ${bucket.label}` : null,
+    bucketShape,
     `Output: ${mediaType === "video" ? "8-second video clip" : mediaType === "carousel" ? "multi-slide IG carousel" : "single still image"}`,
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n\n");
 
   const enrich = mediaType === "video"
     ? `For VIDEO: name ONE camera idea (e.g. "slow push-in" OR "handheld" — pick one, don't enumerate options), ONE lighting feel ("morning light through windows", "warm tungsten", etc.), ONE sensory anchor (steam, butter sheen, hands moving), and the mood in 2-3 words. That's it. The model fills in the rest.`

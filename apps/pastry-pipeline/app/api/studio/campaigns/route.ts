@@ -131,9 +131,14 @@ export async function POST(req: NextRequest) {
     // (no narration). The job-firing logic below already branches on
     // creatorPov.shots.length > 0 to fire one Veo job per shot, and the
     // finalize step concats them into one continuous video.
+    // Multi-shot expansion ONLY when the requested duration exceeds the
+    // selected provider's single-clip cap. Runway Gen-4 supports 10s in
+    // one call, so a 9s or 12s video on Runway = 1-2 clips, not always 2.
+    // Veo 3 caps at 8s so anything over 8s on Veo always chains.
     const totalSec = Number(durationSec) || 8;
-    if (totalSec > 8) {
-      const shotsPerVariant = Math.min(4, Math.ceil(totalSec / 8)); // hard cap 4 shots = 32s
+    const cap = videoProvider.maxSingleClipSec;
+    if (totalSec > cap) {
+      const shotsPerVariant = Math.min(4, Math.ceil(totalSec / cap)); // hard cap 4 shots
       prompts = await expandPromptsToBeatSheet({
         prompts,
         pastry,

@@ -18,6 +18,8 @@ function hashPrompt(s: string): number {
 export const mockProvider: VideoProvider = {
   name: "mock",
   concurrencyLimit: 100,
+  // Mock returns whatever you ask for — no chaining needed in tests.
+  maxSingleClipSec: 60,
   isConfigured: () => true,
   isInDemoMode: () => true,
   costEstimateUSD: () => 0,

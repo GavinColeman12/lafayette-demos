@@ -36,6 +36,13 @@ export interface VideoProvider {
   costEstimateUSD(durationSec: number): number;
   /** Per-model concurrency (1 for Runway Pro, large for Veo). */
   readonly concurrencyLimit: number;
+  /**
+   * Maximum length of a single rendered clip in seconds. Beyond this the
+   * dispatcher chains multiple clips and ffmpeg-concats. Veo 3 = 8s;
+   * Runway Gen-4 = 10s; Veo 3.1 Fast = 8s. Used so a 12s video on Runway
+   * stays as ONE clip, not two chained.
+   */
+  readonly maxSingleClipSec: number;
   /** True iff this provider must short-circuit to mock (STUDIO_DEMO_MODE=1). */
   isInDemoMode(): boolean;
   startGeneration(params: VideoStartParams): Promise<VideoStartResult>;

@@ -24,7 +24,9 @@ export type InstagramCandidate = {
 export function igRecordsToCandidates(brainId: string, records: any[]): InstagramCandidate[] {
   const out: InstagramCandidate[] = [];
   for (const r of records ?? []) {
-    const url = r.displayUrl || r.imageUrl || r.image;
+    // Apify post records use `displayUrl`; IgPost from lib/brand-scraper.ts
+    // uses `thumbnailUrl`; some legacy formats use `imageUrl` or `image`.
+    const url = r.displayUrl || r.thumbnailUrl || r.imageUrl || r.image;
     if (!url) continue;
     const id = crypto.createHash("sha1").update(`instagram:${url}`).digest("hex").slice(0, 16);
     out.push({

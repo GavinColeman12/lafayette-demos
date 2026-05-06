@@ -34,6 +34,9 @@ export function makeRunwayProvider(model: RunwayModelId): VideoProvider {
   return {
     name: cfg.providerName,
     concurrencyLimit: 1,
+    // Gen-4 family supports up to 10s in a single call; veo3.1_fast and
+    // aleph cap at 8s.
+    maxSingleClipSec: model === "gen4" || model === "gen4_turbo" ? 10 : 8,
     isConfigured: () => Boolean(process.env.RUNWAY_API_KEY) && !demoModeForced(),
     isInDemoMode: () => demoModeForced(),
     costEstimateUSD: (durationSec: number) => durationSec * cfg.perSecondUsd,

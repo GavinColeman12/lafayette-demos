@@ -25,6 +25,8 @@ export const veoProvider: VideoProvider = {
   // Veo on Vertex has no published per-region concurrency cap; in practice
   // we've never hit one. Treat as effectively unlimited.
   concurrencyLimit: 100,
+  // Veo 3 GA renders 8s per call; longer durations need ffmpeg-concat.
+  maxSingleClipSec: 8,
   isConfigured: () => veoIsConfigured() && !veoIsDemoMode(),
   isInDemoMode: () => veoIsDemoMode(),
   // Veo bills per 8s clip at ~$0.50 (Vertex public pricing as of 2026-05).

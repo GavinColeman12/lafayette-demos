@@ -155,9 +155,10 @@ export function CampaignLauncher({
   // confirmRealVeoSpend. Distinct from the user-chosen `provider` below.
   const [serverProvider, setServerProvider] = useState<"veo3" | "veo3_fast" | "mock">("mock");
 
-  // Video provider — runway_gen4_turbo is the demo-friendly default; users
-  // can pick veo3 or runway_gen4 (higher fidelity) in the Advanced disclosure.
-  const [provider, setProvider] = useState<"veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast">("runway_gen4_turbo");
+  // Video provider — "auto" is the default; the server picks based on
+  // duration + mediaType via defaultProvider(). Users can override in the
+  // Advanced disclosure.
+  const [provider, setProvider] = useState<"auto" | "veo3" | "runway_gen4" | "runway_gen4_turbo" | "runway_veo3.1_fast">("auto");
 
   // Pinned brand-asset IDs (from PinnedAssetsPanel). Sent to the campaigns
   // API so the per-beat selector binds them to specific shots.
@@ -236,7 +237,7 @@ export function CampaignLauncher({
           slideCount: mediaType === "carousel" ? slideCount : 1,
           scene: scene || undefined,
           durationSec: mediaType === "video" ? durationSec : undefined,
-          provider: mediaType === "video" ? provider : undefined,
+          provider: mediaType === "video" && provider !== "auto" ? provider : undefined,
           pinnedAssetIds: pinnedAssetIds.length > 0 ? pinnedAssetIds : undefined,
         }),
       });
@@ -420,6 +421,7 @@ export function CampaignLauncher({
                 onChange={(e) => setProvider(e.target.value as any)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-sm"
               >
+                <option value="auto">Auto · server picks based on duration + media</option>
                 <option value="runway_gen4_turbo">Runway Gen-4 Turbo · ~$0.025/sec · fastest</option>
                 <option value="runway_gen4">Runway Gen-4 · ~$0.05/sec · highest fidelity</option>
                 <option value="runway_veo3.1_fast">Runway Veo 3.1 Fast · ~$0.04/sec</option>
