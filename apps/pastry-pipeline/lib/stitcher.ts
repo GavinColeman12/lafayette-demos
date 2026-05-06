@@ -68,6 +68,28 @@ export async function ffmpegIsAvailable(): Promise<boolean> {
 }
 
 /**
+ * Extract the last frame of a video file as a JPEG. Used by the multi-shot
+ * dispatcher to feed shot N's last frame as the seed image for shot N+1
+ * (visual continuity across stitched segments).
+ *
+ * Returns the public URL the launcher can pass to Runway image-to-video.
+ */
+export async function extractLastFrame(clipPath: string): Promise<{ publicUrl: string; localPath: string }> {
+  if (!(await ffmpegIsAvailable())) throw new Error(`ffmpeg not available at ${FFMPEG}`);
+  if (!fs.existsSync(clipPath)) throw new Error(`clip missing: ${clipPath}`);
+  const FRAME_CACHE = path.join(process.cwd(), "data", "frame-cache");
+  fs.mkdirSync(FRAME_CACHE, { recursive: true });
+  const base = path.basename(clipPath).replace(/\.[^.]+$/, "");
+  const localPath = path.join(FRAME_CACHE, `${base}-last.jpg`);
+  // -sseof -0.1 → seek 0.1s before EOF; -frames:v 1 → grab one frame.
+  await exec(FFMPEG, ["-y", "-sseof", "-0.1", "-i", clipPath, "-frames:v", "1", "-q:v", "2", localPath]);
+  return {
+    localPath,
+    publicUrl: `/frame-cache/${base}-last.jpg`,
+  };
+}
+
+/**
  * Concat 2+ Veo clips head-to-tail using their native audio. Used for
  * visual-only multi-shot videos (durationSec > 8 with no Creator-POV
  * narration) — e.g. a 24s "how the croissant is made" process video that's
