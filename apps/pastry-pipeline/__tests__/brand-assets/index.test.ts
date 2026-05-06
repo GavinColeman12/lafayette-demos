@@ -39,7 +39,12 @@ describe("brand-asset index", () => {
     await writeIndex(idx);
     const reread = await readIndex(TEST_BRAIN);
     expect(reread.assets).toHaveLength(1);
-    expect(Array.from(reread.assets[0].embedding)).toEqual([0.1, 0.2, 0.3]);
+    // Float32Array round-trip incurs Float32 precision loss; compare with tolerance.
+    const got = Array.from(reread.assets[0].embedding);
+    expect(got).toHaveLength(3);
+    expect(got[0]).toBeCloseTo(0.1, 5);
+    expect(got[1]).toBeCloseTo(0.2, 5);
+    expect(got[2]).toBeCloseTo(0.3, 5);
   });
 
   it("addAssets dedupes by id", async () => {

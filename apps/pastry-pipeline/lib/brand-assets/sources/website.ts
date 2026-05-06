@@ -35,9 +35,19 @@ export function extractImagesFromHtml(html: string, baseUrl: string): WebsiteCan
   // og:image
   const og = html.match(/<meta\s+[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
   if (og) push(og[1]);
-  // <img src=…>
-  const imgRe = /<img\s+[^>]*src=["']([^"']+)["'][^>]*?(?:alt=["']([^"']*)["'])?[^>]*>/gi;
+  // <img …> — capture the whole tag, then pull src + alt from its attributes.
+  // The two-pass approach avoids regex back-tracking issues when alt comes
+  // before src or with attribute order variability.
+  const tagRe = /<img\s+[^>]*>/gi;
+  const srcRe = /\bsrc=["']([^"']+)["']/i;
+  const altRe = /\balt=["']([^"']*)["']/i;
   let m: RegExpExecArray | null;
-  while ((m = imgRe.exec(html))) push(m[1], m[2]);
+  while ((m = tagRe.exec(html))) {
+    const tag = m[0];
+    const srcMatch = tag.match(srcRe);
+    if (!srcMatch) continue;
+    const altMatch = tag.match(altRe);
+    push(srcMatch[1], altMatch?.[1]);
+  }
   return out;
 }
