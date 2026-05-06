@@ -87,6 +87,9 @@ export type ContentBucket = {
    * KEEP under ~600 words — too long → Claude gets confused.
    */
   systemBrief: string;
+  /** When set, the launcher only shows this bucket for brains with one of these verticals.
+   *  Empty/absent = all verticals. */
+  applicableVerticals?: string[];
 };
 
 export type ContentFamily =
@@ -533,6 +536,16 @@ export function getBucket(id: string): ContentBucket | undefined {
 
 export function bucketsByFamily(family: ContentFamily): ContentBucket[] {
   return CONTENT_BUCKETS.filter((b) => b.family === family);
+}
+
+/**
+ * Filter buckets that apply to a brand's vertical. Buckets with empty/absent
+ * `applicableVerticals` are visible to all verticals (universally-applicable
+ * formats like creator_pov, ugc_repost, blog_article).
+ */
+export function bucketsForVertical(vertical: string | undefined): ContentBucket[] {
+  if (!vertical) return CONTENT_BUCKETS;
+  return CONTENT_BUCKETS.filter((b) => !b.applicableVerticals || b.applicableVerticals.includes(vertical));
 }
 
 /**
