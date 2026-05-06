@@ -3,11 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { igRecordsToCandidates, type InstagramCandidate } from "./sources/instagram";
 import { extractImagesFromHtml, type WebsiteCandidate } from "./sources/website";
+import { searchUnsplash, type UnsplashCandidate } from "./sources/unsplash";
+import { searchPexels, type PexelsCandidate } from "./sources/pexels";
 import { embedImage } from "./embed";
 import { computeCentroid, filterByBrandMatch, threshold } from "./match";
 import { describeImage } from "./visual-describe";
+import { generateWebQueries } from "./queries";
 import { readIndex, writeIndex } from "./index";
-import type { BrandAsset } from "./types";
+import type { BrandAsset, BrandAssetSource, AssetLicenseTag } from "./types";
 
 type RefreshInput = {
   brainId: string;
@@ -15,6 +18,10 @@ type RefreshInput = {
   websiteHtml: string | null;    // raw HTML if scraped
   websiteBaseUrl: string | null;
   topNPerSource?: number;        // default 50 for IG
+  webSources?: Array<"unsplash" | "pexels">;  // Tier 3 — opt-in web search
+  brandName?: string;
+  vertical?: string;
+  visualFingerprint?: string;
 };
 
 const ROOT = (brainId: string) => path.join(process.cwd(), "data", "brand-assets", brainId);
@@ -105,11 +112,57 @@ export async function refreshAssetLibrary(input: RefreshInput): Promise<{ brainI
     }
   }
 
+  // ── Tier 3: Unsplash + Pexels (opt-in via input.webSources) ──
+  const tier3Assets: BrandAsset[] = [];
+  if (input.webSources?.length && centroid && t > 0) {
+    const queries = await generateWebQueries({
+      brandName: input.brandName ?? input.brainId,
+      vertical: input.vertical ?? "food",
+      visualFingerprint: input.visualFingerprint,
+    });
+    const allCands: Array<UnsplashCandidate | PexelsCandidate> = [];
+    for (const q of queries) {
+      if (input.webSources.includes("unsplash")) allCands.push(...await searchUnsplash(q, 30));
+      if (input.webSources.includes("pexels"))   allCands.push(...await searchPexels(q, 30));
+    }
+    // Hydrate (download + embed) before filtering by brand match.
+    const hydrated: Array<{ cand: UnsplashCandidate | PexelsCandidate; embedding: Float32Array; localPath: string; width: number; height: number; ext: string }> = [];
+    for (const c of allCands) {
+      const dl = await downloadImage(c.originalUrl, path.join(ROOT(input.brainId), c.source), c.id);
+      if (!dl) continue;
+      let embedding: Float32Array;
+      try { embedding = await embedImage(dl.localPath); } catch { continue; }
+      hydrated.push({ cand: c, embedding, ...dl });
+    }
+    const kept = filterByBrandMatch(hydrated.map((h) => ({ ...h.cand, embedding: h.embedding, hydrated: h })) as any, centroid, t);
+    for (const k of kept) {
+      const h = (k as any).hydrated;
+      const c = (k as any).cand ?? k;
+      const source = c.source as BrandAssetSource;
+      const licenseTag: AssetLicenseTag = c.licenseTag;
+      tier3Assets.push({
+        id: c.id, brainId: input.brainId, source,
+        originalUrl: c.originalUrl, localPath: h.localPath,
+        publicUrl: `/brand-assets/${input.brainId}/${source}/${c.id}.${h.ext}`,
+        caption: c.caption,
+        visualDescription: c.caption ?? "",
+        embedding: h.embedding,
+        brandMatchScore: (k as any).brandMatchScore,
+        width: h.width, height: h.height,
+        fetchedAt: new Date().toISOString(),
+        licenseTag,
+      });
+    }
+  }
+
   // ── Persist ──────────────────────────────────────────────────
-  const all = [...tier1Assets, ...tier2Assets];
+  const all = [...tier1Assets, ...tier2Assets, ...tier3Assets];
   const idx = await readIndex(input.brainId);
   // Replace the same-source assets entirely (refresh is full per-source).
-  idx.assets = idx.assets.filter((a) => a.source !== "instagram" && a.source !== "website");
+  const replacedSources = new Set<BrandAssetSource>(["instagram", "website"]);
+  if (input.webSources?.includes("unsplash")) replacedSources.add("unsplash");
+  if (input.webSources?.includes("pexels")) replacedSources.add("pexels");
+  idx.assets = idx.assets.filter((a) => !replacedSources.has(a.source));
   idx.assets.push(...all);
   idx.centroid = centroid;
   idx.centroidComputedAt = centroid ? new Date().toISOString() : null;
