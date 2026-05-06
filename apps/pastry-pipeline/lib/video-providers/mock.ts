@@ -4,10 +4,13 @@ import type { VideoProvider, VideoStartResult, VideoPollResult, VideoStartParams
 // Stable list of stock fallback clips already shipped in public/demo-assets/.
 // Hashing the prompt picks one deterministically so a re-launch returns the
 // same clip (helpful for visual diffs in demos).
+// Real demo MP4s shipped in public/demo-assets/. Hash-picked deterministically
+// so a re-launch with the same prompt returns the same clip.
 const STOCK_CLIPS = [
-  "/demo-assets/croissant-hero.mp4",
-  "/demo-assets/lamination-macro.mp4",
-  "/demo-assets/pour-shot.mp4",
+  "/demo-assets/demo-1-banana-best.mp4",
+  "/demo-assets/demo-2-banana-alt.mp4",
+  "/demo-assets/demo-3-stop-scrolling.mp4",
+  "/demo-assets/demo-4-creator-pov.mp4",
 ];
 function hashPrompt(s: string): number {
   let h = 0;
